@@ -1,25 +1,37 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '../i18n/LanguageContext';
 
-type Chain = 'bsc' | 'solana' | 'ethereum' | 'polygon';
+type Chain = 'bnbTestnet' | 'bnbMainnet' | 'solana';
 
 interface ChainSelectorProps {
   selectedChain: Chain;
   onChainChange: (chain: Chain) => void;
 }
 
-const CHAIN_CONFIGS: Record<Chain, { name: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  bsc: { name: 'BSC', icon: 'diamond-outline', color: '#F0B90B' },
-  solana: { name: 'Solana', icon: 'radio-button-on-outline', color: '#9945FF' },
-  ethereum: { name: 'Ethereum', icon: 'planet-outline', color: '#627EEA' },
-  polygon: { name: 'Polygon', icon: 'hexagon-outline', color: '#8247E5' },
+const CHAIN_CONFIGS: Record<Chain, { name: string; icon: keyof typeof Ionicons.glyphMap; color: string; disabled: boolean; disabledReason?: string }> = {
+  bnbTestnet: { name: 'BNB Testnet', icon: 'diamond-outline', color: '#F0B90B', disabled: false },
+  bnbMainnet: { name: 'BNB Mainnet', icon: 'diamond', color: '#F0B90B', disabled: true, disabledReason: 'Coming soon' },
+  solana: { name: 'Solana', icon: 'radio-button-on-outline', color: '#9945FF', disabled: true, disabledReason: 'Coming soon' },
 };
 
 export default function ChainSelector({ selectedChain, onChainChange }: ChainSelectorProps) {
+  const { t } = useLanguage();
   const [modalVisible, setModalVisible] = React.useState(false);
 
   const currentConfig = CHAIN_CONFIGS[selectedChain];
+
+  const getChainDisplayName = (chain: Chain): string => {
+    switch (chain) {
+      case 'bnbTestnet':
+        return t.chainSelector.bnbTestnet;
+      case 'bnbMainnet':
+        return t.chainSelector.bnbMainnet;
+      case 'solana':
+        return t.chainSelector.solana;
+    }
+  };
 
   return (
     <>
@@ -43,30 +55,41 @@ export default function ChainSelector({ selectedChain, onChainChange }: ChainSel
           onPress={() => setModalVisible(false)}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Chain</Text>
+            <Text style={styles.modalTitle}>{t.chainSelector.title}</Text>
             {(Object.keys(CHAIN_CONFIGS) as Chain[]).map((chain) => {
               const config = CHAIN_CONFIGS[chain];
+              const isDisabled = config.disabled;
               return (
                 <TouchableOpacity
                   key={chain}
                   style={[
                     styles.chainOption,
                     selectedChain === chain && styles.chainOptionActive,
+                    isDisabled && styles.chainOptionDisabled,
                   ]}
                   onPress={() => {
-                    onChainChange(chain);
-                    setModalVisible(false);
+                    if (!isDisabled) {
+                      onChainChange(chain);
+                      setModalVisible(false);
+                    }
                   }}
+                  disabled={isDisabled}
                 >
-                  <Ionicons name={config.icon} size={24} color={config.color} />
-                  <Text style={[
-                    styles.chainOptionText,
-                    selectedChain === chain && styles.chainOptionTextActive,
-                  ]}>
-                    {config.name}
-                  </Text>
-                  {selectedChain === chain && (
-                    <Ionicons name="checkmark" size={20} color="#6c5ce7" />
+                  <Ionicons name={config.icon} size={24} color={isDisabled ? '#b2bec3' : config.color} />
+                  <View style={styles.chainOptionTextContainer}>
+                    <Text style={[
+                      styles.chainOptionText,
+                      selectedChain === chain && !isDisabled && styles.chainOptionTextActive,
+                      isDisabled && styles.chainOptionTextDisabled,
+                    ]}>
+                      {getChainDisplayName(chain)}
+                    </Text>
+                    {isDisabled && (
+                      <Text style={styles.disabledReason}>{t.chainSelector.comingSoon}</Text>
+                    )}
+                  </View>
+                  {selectedChain === chain && !isDisabled && (
+                    <Ionicons name="checkmark" size={20} color="#50d56b" />
                   )}
                 </TouchableOpacity>
               );
@@ -95,7 +118,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
     marginLeft: 4,
   },
   modalOverlay: {
@@ -133,9 +156,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   chainOptionActive: {
-    backgroundColor: '#ede9fe',
+    backgroundColor: '#e8f8ec',
     borderWidth: 1,
-    borderColor: '#6c5ce7',
+    borderColor: '#50d56b',
+  },
+  chainOptionDisabled: {
+    opacity: 0.5,
   },
   chainOptionText: {
     flex: 1,
@@ -143,8 +169,20 @@ const styles = StyleSheet.create({
     color: '#636e72',
     marginLeft: 12,
   },
+  chainOptionTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
   chainOptionTextActive: {
-    color: '#6c5ce7',
+    color: '#50d56b',
     fontWeight: '600',
+  },
+  chainOptionTextDisabled: {
+    color: '#b2bec3',
+  },
+  disabledReason: {
+    fontSize: 12,
+    color: '#b2bec3',
+    marginTop: 2,
   },
 });

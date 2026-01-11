@@ -8,13 +8,16 @@ import {
   Alert,
   ActivityIndicator,
   SafeAreaView,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp, useFocusEffect } from '@react-navigation/native';
 
 import ChainSelector from '../components/ChainSelector';
 import DepositCard, { Deposit } from '../components/DepositCard';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import { RootStackParamList, Chain } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -25,9 +28,10 @@ interface HomeScreenProps {
   onChainChange: (chain: Chain) => void;
 }
 
-const API_URL = 'http://localhost:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function HomeScreen({ navigation, chain, network, onChainChange }: HomeScreenProps) {
+  const { t } = useLanguage();
   const [walletAddress, setWalletAddress] = useState('');
   const [connected, setConnected] = useState(false);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
@@ -59,10 +63,10 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
         setConnected(true);
         fetchUserDeposits(accounts[0]);
       } else {
-        Alert.alert('Error', 'Please install MetaMask to use this app');
+        Alert.alert(t.common.error, t.wallet.notConnected);
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to connect wallet');
+      Alert.alert(t.common.error, error.message || t.wallet.connectError);
     }
   };
 
@@ -106,8 +110,8 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
         console.log('[HomeScreen] Current chainId:', chainId);
         if (chainId !== '0x61') {
           Alert.alert(
-            'Wrong Network',
-            'Please switch to BSC Testnet (Chain ID: 97) to withdraw',
+            t.wallet.wrongNetwork,
+            t.wallet.switchToTestnet,
             [{ text: 'OK' }]
           );
           setLoading(false);
@@ -173,35 +177,38 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <ChainSelector selectedChain={chain} onChainChange={onChainChange} />
-        {connected && (
-          <TouchableOpacity style={styles.disconnectButton} onPress={disconnectWallet}>
-            <Ionicons name="log-out-outline" size={20} color="#6c5ce7" />
-          </TouchableOpacity>
-        )}
+        <View style={styles.headerActions}>
+          <LanguageSwitcher />
+          {connected && (
+            <TouchableOpacity style={styles.disconnectButton} onPress={disconnectWallet}>
+              <Ionicons name="log-out-outline" size={20} color="#50d56b" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         {!connected ? (
           <View style={styles.welcomeContainer}>
             <View style={styles.iconContainer}>
-              <Ionicons name="wallet-outline" size={80} color="#6c5ce7" />
+              <Image source={require('../assets/dilema-logo.png')} style={styles.logo} />
             </View>
-            <Text style={styles.welcomeTitle}>Welcome to Dielemma</Text>
+            <Text style={styles.welcomeTitle}>{t.home.welcomeTitle}</Text>
             <Text style={styles.welcomeSubtitle}>
-              Proof of Life Smart Contract
+              {t.home.welcomeSubtitle}
             </Text>
             <Text style={styles.welcomeDescription}>
-              Connect your wallet to create time-locked deposits that require periodic proof of life.
+              {t.home.welcomeDescription}
             </Text>
             <TouchableOpacity style={styles.connectButton} onPress={connectWallet}>
-              <Text style={styles.connectButtonText}>Connect Wallet</Text>
+              <Text style={styles.connectButtonText}>{t.home.connectWallet}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.connectedContainer}>
             <View style={styles.walletCard}>
               <View style={styles.walletInfo}>
-                <Text style={styles.walletLabel}>Connected</Text>
+                <Text style={styles.walletLabel}>{t.home.connected}</Text>
                 <Text style={styles.walletAddress}>
                   {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
                 </Text>
@@ -214,9 +221,9 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
             {deposits.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="add-circle-outline" size={80} color="#b2bec3" />
-                <Text style={styles.emptyStateTitle}>No Deposits</Text>
+                <Text style={styles.emptyStateTitle}>{t.home.noDeposits}</Text>
                 <Text style={styles.emptyStateDescription}>
-                  Create your first time-locked deposit
+                  {t.home.noDepositsDescription}
                 </Text>
                 <TouchableOpacity
                   style={styles.addButton}
@@ -229,13 +236,13 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
                   }
                 >
                   <Ionicons name="add" size={28} color="#fff" />
-                  <Text style={styles.addButtonText}>Add Deposit</Text>
+                  <Text style={styles.addButtonText}>{t.home.addDeposit}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.depositsContainer}>
                 <View style={styles.depositsHeader}>
-                  <Text style={styles.depositsTitle}>Your Deposits</Text>
+                  <Text style={styles.depositsTitle}>{t.home.yourDeposits}</Text>
                   <TouchableOpacity
                     style={styles.smallAddButton}
                     onPress={() =>
@@ -265,7 +272,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
 
       {loading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#6c5ce7" />
+          <ActivityIndicator size="large" color="#50d56b" />
         </View>
       )}
     </SafeAreaView>
@@ -286,6 +293,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#dfe6e9',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   disconnectButton: {
     padding: 8,
@@ -308,10 +320,15 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: '#ede9fe',
+    backgroundColor: '#e8f8ec',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    resizeMode: 'contain',
   },
   welcomeTitle: {
     fontSize: 28,
@@ -321,7 +338,7 @@ const styles = StyleSheet.create({
   },
   welcomeSubtitle: {
     fontSize: 16,
-    color: '#6c5ce7',
+    color: '#50d56b',
     marginBottom: 32,
   },
   welcomeDescription: {
@@ -332,11 +349,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   connectButton: {
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
     paddingHorizontal: 48,
     paddingVertical: 16,
     borderRadius: 12,
-    shadowColor: '#6c5ce7',
+    shadowColor: '#50d56b',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -407,12 +424,12 @@ const styles = StyleSheet.create({
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
     paddingHorizontal: 40,
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
-    shadowColor: '#6c5ce7',
+    shadowColor: '#50d56b',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -441,10 +458,10 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#6c5ce7',
+    shadowColor: '#50d56b',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,

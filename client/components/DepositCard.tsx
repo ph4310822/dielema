@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export interface Deposit {
   depositIndex: number;
@@ -22,6 +23,7 @@ interface DepositCardProps {
 }
 
 export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: DepositCardProps) {
+  const { t } = useLanguage();
   const amount = (parseFloat(deposit.amount) / 1e18).toFixed(4);
 
   // State for real-time elapsed time
@@ -73,9 +75,9 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
   const timeoutFormatted = formatTimeout(deposit.timeoutSeconds);
 
   const getStatus = () => {
-    if (deposit.isClosed) return { text: 'Closed', color: '#636e72', bgColor: '#dfe6e9' };
-    if (deposit.isExpired) return { text: 'Expired', color: '#d63031', bgColor: '#fab1a0' };
-    return { text: 'Active', color: '#00b894', bgColor: '#55efc4' };
+    if (deposit.isClosed) return { text: t.depositCard.closed, color: '#636e72', bgColor: '#dfe6e9' };
+    if (deposit.isExpired) return { text: t.depositCard.expired, color: '#d63031', bgColor: '#fab1a0' };
+    return { text: t.depositCard.active, color: '#00b894', bgColor: '#55efc4' };
   };
 
   const status = getStatus();
@@ -92,17 +94,17 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
       <View style={styles.details}>
         <View style={styles.detailRow}>
           <Ionicons name="cash-outline" size={16} color="#636e72" />
-          <Text style={styles.detailText}>{amount} BNB</Text>
+          <Text style={styles.detailText}>{amount} {t.depositCard.amount}</Text>
         </View>
 
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={16} color="#636e72" />
-          <Text style={styles.detailText}>{elapsedFormatted} elapsed</Text>
+          <Text style={styles.detailText}>{elapsedFormatted} {t.depositCard.elapsed}</Text>
         </View>
 
         <View style={styles.detailRow}>
           <Ionicons name="calendar-outline" size={16} color="#636e72" />
-          <Text style={styles.detailText}>{timeoutFormatted} timeout</Text>
+          <Text style={styles.detailText}>{timeoutFormatted} {t.depositCard.timeout}</Text>
         </View>
       </View>
 
@@ -114,7 +116,7 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
               onPress={() => onProofOfLife(deposit.depositIndex)}
             >
               <Ionicons name="pulse" size={18} color="#fff" />
-              <Text style={styles.buttonText}>Proof of Life</Text>
+              <Text style={styles.buttonText}>{t.depositCard.proofOfLife}</Text>
             </TouchableOpacity>
           )}
 
@@ -123,7 +125,7 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
             onPress={() => onWithdraw(deposit.depositIndex)}
           >
             <Ionicons name="arrow-down-circle-outline" size={18} color="#fff" />
-            <Text style={styles.buttonText}>Withdraw</Text>
+            <Text style={styles.buttonText}>{t.depositCard.withdraw}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -190,7 +192,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   proofButton: {
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
   },
   withdrawButton: {
     backgroundColor: '#fdcb6e',

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/native';
 
 import { RootStackParamList, Chain } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type AddDepositScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddDeposit'>;
 
@@ -28,18 +29,21 @@ interface AddDepositScreenProps {
   };
 }
 
-const API_URL = 'http://localhost:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
-const DAY_OPTIONS = [
-  { label: '1 Day', days: 1 },
-  { label: '7 Days', days: 7 },
-  { label: '30 Days', days: 30 },
-  { label: '90 Days', days: 90 },
+const getDayOptions = (t: any) => [
+  { label: `1 ${t.addDeposit.days}`, days: 1 },
+  { label: `7 ${t.addDeposit.days}`, days: 7 },
+  { label: `30 ${t.addDeposit.days}`, days: 30 },
+  { label: `90 ${t.addDeposit.days}`, days: 90 },
 ];
 
 export default function AddDepositScreen({ navigation, route }: AddDepositScreenProps) {
+  const { t } = useLanguage();
   const { chain, network, walletAddress } = route.params;
   console.log('[AddDepositScreen] Screen mounted with params:', { chain, network, walletAddress });
+
+  const DAY_OPTIONS = getDayOptions(t);
 
   // Check MetaMask network on mount
   React.useEffect(() => {
@@ -299,7 +303,7 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
         >
           <Ionicons name="arrow-back" size={24} color="#2d3436" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Deposit</Text>
+        <Text style={styles.headerTitle}>{t.addDeposit.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -312,12 +316,12 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
         {/* Receiver Address */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Receiver Address</Text>
+          <Text style={styles.label}>{t.addDeposit.receiverLabel}</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="person-outline" size={20} color="#b2bec3" />
             <TextInput
               style={styles.input}
-              placeholder="0x..."
+              placeholder={t.addDeposit.receiverPlaceholder}
               placeholderTextColor="#b2bec3"
               value={receiver}
               onChangeText={setReceiver}
@@ -328,12 +332,12 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
         {/* Amount */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Amount ({getTokenSymbol()})</Text>
+          <Text style={styles.label}>{t.addDeposit.amountLabel}</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="cash-outline" size={20} color="#b2bec3" />
             <TextInput
               style={styles.input}
-              placeholder="0.01"
+              placeholder={t.addDeposit.amountPlaceholder}
               placeholderTextColor="#b2bec3"
               value={amount}
               onChangeText={setAmount}
@@ -344,7 +348,7 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
         {/* Timeout */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Timeout Period</Text>
+          <Text style={styles.label}>{t.addDeposit.daysLabel}</Text>
           <View style={styles.dayOptions}>
             {DAY_OPTIONS.map((option) => (
               <TouchableOpacity
@@ -391,7 +395,7 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
               <Ionicons name="calendar-outline" size={20} color="#b2bec3" />
               <TextInput
                 style={styles.input}
-                placeholder="Enter days"
+                placeholder={t.addDeposit.days}
                 placeholderTextColor="#b2bec3"
                 value={customDays}
                 onChangeText={setCustomDays}
@@ -402,7 +406,7 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
           {selectedDays && (
             <View style={styles.timeoutInfo}>
-              <Ionicons name="information-circle-outline" size={16} color="#6c5ce7" />
+              <Ionicons name="information-circle-outline" size={16} color="#50d56b" />
               <Text style={styles.timeoutInfoText}>
                 Timeout: {getTimeoutSeconds() / 86400} days ({getTimeoutSeconds()} seconds)
               </Text>
@@ -446,7 +450,7 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
           ) : (
             <>
               <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.createButtonText}>Create Deposit</Text>
+              <Text style={styles.createButtonText}>{t.addDeposit.createDeposit}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -497,7 +501,7 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 12,
-    color: '#6c5ce7',
+    color: '#50d56b',
     marginBottom: 4,
   },
   infoValue: {
@@ -545,8 +549,8 @@ const styles = StyleSheet.create({
     borderColor: '#dfe6e9',
   },
   dayButtonActive: {
-    backgroundColor: '#6c5ce7',
-    borderColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
+    borderColor: '#50d56b',
   },
   dayButtonText: {
     fontSize: 14,
@@ -603,11 +607,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
-    shadowColor: '#6c5ce7',
+    shadowColor: '#50d56b',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

@@ -18,6 +18,7 @@ import {
   getAllowance,
   approveDLM,
 } from '../utils/dlmToken';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type ProofOfLifeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProofOfLife'>;
 
@@ -33,11 +34,12 @@ interface ProofOfLifeScreenProps {
   };
 }
 
-const API_URL = 'http://localhost:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 type Step = 'check' | 'approve' | 'proof' | 'success';
 
 export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScreenProps) {
+  const { t } = useLanguage();
   const { depositIndex, chain, network, walletAddress } = route.params;
 
   const [step, setStep] = useState<Step>('check');
@@ -228,42 +230,42 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
         >
           <Ionicons name="arrow-back" size={24} color="#2d3436" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Proof of Life</Text>
+        <Text style={styles.headerTitle}>{t.proofOfLife.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         {/* Deposit Info */}
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Deposit #{depositIndex}</Text>
+          <Text style={styles.infoTitle}>{t.proofOfLife.depositInfo} #{depositIndex}</Text>
           <View style={styles.infoRow}>
             <Ionicons name="time-outline" size={20} color="#636e72" />
-            <Text style={styles.infoText}>Extends timer by 7 days</Text>
+            <Text style={styles.infoText}>{t.proofOfLife.extendTime}</Text>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="cash-outline" size={20} color="#636e72" />
-            <Text style={styles.infoText}>Costs 1 DLM token</Text>
+            <Text style={styles.infoText}>{t.proofOfLife.proofCost}</Text>
           </View>
         </View>
 
         {/* Loading state */}
         {loading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6c5ce7" />
-            <Text style={styles.loadingText}>Processing...</Text>
+            <ActivityIndicator size="large" color="#50d56b" />
+            <Text style={styles.loadingText}>{t.common.loading}</Text>
           </View>
         )}
 
         {/* Check Step */}
         {step === 'check' && !loading && (
           <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Checking DLM Tokens</Text>
+            <Text style={styles.stepTitle}>{t.proofOfLife.checkStatus}</Text>
             <View style={styles.balanceCard}>
-              <Text style={styles.balanceLabel}>Your DLM Balance</Text>
+              <Text style={styles.balanceLabel}>{t.proofOfLife.currentBalance}</Text>
               <Text style={styles.balanceValue}>{dlmBalance} DLM</Text>
             </View>
             <TouchableOpacity style={styles.primaryButton} onPress={checkTokenStatus}>
-              <Text style={styles.buttonText}>Refresh</Text>
+              <Text style={styles.buttonText}>{t.common.loading}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -305,7 +307,7 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
         {step === 'proof' && !loading && (
           <View style={styles.stepContainer}>
             <View style={styles.iconContainer}>
-              <Ionicons name="pulse" size={60} color="#6c5ce7" />
+              <Ionicons name="pulse" size={60} color="#50d56b" />
             </View>
             <Text style={styles.stepTitle}>Submit Proof of Life</Text>
             <Text style={styles.stepDescription}>
@@ -465,7 +467,7 @@ const styles = StyleSheet.create({
   },
   balanceLabel: {
     fontSize: 14,
-    color: '#6c5ce7',
+    color: '#50d56b',
     marginBottom: 4,
   },
   balanceValue: {
@@ -489,11 +491,11 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   primaryButton: {
-    backgroundColor: '#6c5ce7',
+    backgroundColor: '#50d56b',
     paddingHorizontal: 40,
     paddingVertical: 16,
     borderRadius: 12,
-    shadowColor: '#6c5ce7',
+    shadowColor: '#50d56b',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
