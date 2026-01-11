@@ -1,0 +1,108 @@
+{
+  "hero": {
+    "badge": "Secure Inheritance",
+    "title": "Protect Your Digital Legacy",
+    "subtitle": "Ensure your on-chain fortune safely passes to your loved ones with proof-of-life technology",
+    "cta_primary": "Launch App",
+    "cta_secondary": "Read Lightpaper"
+  },
+  "features": {
+    "title": "How It Works",
+    "subtitle": "Simple, secure, and automated inheritance for your digital assets",
+    "create_deposit": {
+      "title": "Create Deposit",
+      "description": "Set up a time-locked deposit with your chosen successor and timeout period"
+    },
+    "proof_of_life": {
+      "title": "Submit Proof of Life",
+      "description": "Periodically prove you're alive to extend the timer and keep your deposit active"
+    },
+    "automatic_transfer": {
+      "title": "Automatic Transfer",
+      "description": "If timeout expires, assets automatically transfer to your designated successor"
+    }
+  },
+  "lightpaper": {
+    "title": "Lightpaper",
+    "subtitle": "Learn more about Dielema (死了么) - The Proof of Life Protocol",
+    "tabs": {
+      "intro": "Introduction",
+      "problem": "Problem",
+      "solution": "Solution",
+      "token": "Token"
+    },
+    "intro": {
+      "title": "Introduction",
+      "content": [
+        "Dielema (死了么) is a revolutionary proof-of-life protocol designed to solve the critical problem of digital asset inheritance. In the event of unexpected tragedy, your hard-earned crypto assets remain locked forever-until now.",
+        "Our smart contract system allows you to designate a successor for your on-chain fortune while maintaining complete control. By periodically submitting a proof of life, you keep your assets active. If the unexpected happens, your assets automatically transfer to your chosen beneficiary.",
+        "Built for multi-chain compatibility, Dielema works across BSC, Ethereum, Polygon, and Solana, ensuring your digital legacy is protected regardless of which blockchain you use."
+      ]
+    },
+    "problem": {
+      "title": "The Problem",
+      "content": [
+        "Every year, millions of dollars worth of cryptocurrency are lost forever because private keys die with their owners. Unlike traditional banking, there is no central authority to handle inheritance when someone passes away unexpectedly.",
+        "Without proper inheritance planning:",
+        "• Assets remain inaccessible forever",
+        "• Families face legal battles and technical hurdles",
+        "• Wealth intended for loved ones is permanently lost",
+        "• No mechanism to prove owner demise",
+        "Current solutions require trust in third parties or complex legal arrangements that may not be technically feasible or enforceable across borders."
+      ]
+    },
+    "solution": {
+      "title": "The Dielemma Solution",
+      "content": [
+        "Dielemma solves this through an elegant smart contract system:",
+        "",
+        "1. Create Deposit: Deposit your assets into a smart contract with a designated successor (receiver) and timeout period.",
+        "",
+        "2. Proof of Life: Before timeout expires, submit a transaction proving you're alive. This resets the timer and requires burning 1 DLM token.",
+        "",
+        "3. Auto-Transfer: If you fail to submit proof of life before timeout, the assets automatically transfer to your designated successor.",
+        "",
+        "Key Features:",
+        "• No trust required - Smart contracts execute automatically",
+        "• Multi-chain support - Works on BSC, Ethereum, Polygon, Solana",
+        "• Flexible timeouts - Set hours, days, or months",
+        "• Revocable - Withdraw anytime while alive",
+        "• Transparent - All transactions visible on blockchain",
+        "• Secure - Battle-tested smart contract code"
+      ]
+    },
+    "token": {
+      "title": "DLM Token (死了么)",
+      "content": [
+        "The DLM token (死了么) serves as the fuel for the Dielemma ecosystem. Key aspects:",
+        "",
+        "• Token Name: 死了么 (Dielema)",
+        "• Ticker: DLM",
+        "• Type: ERC-20 / SPL",
+        "• Utility: Required for proof-of-life transactions",
+        "",
+        "Token Economics:",
+        "• 1 DLM burned per proof of life submission",
+        "• Creates ongoing demand for the token",
+        "• Aligns incentives for long-term depositors",
+        "",
+        "Token Distribution:",
+        "• Fair launch with no team allocation",
+        "• Community-driven development",
+        "• Governance features planned for future",
+        "",
+        "The DLM token ensures spam prevention while keeping the service accessible. As more users adopt Dielemma for protecting their digital legacies, the token's utility and value grow proportionally."
+      ]
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "features": "Features",
+    "lightpaper": "Lightpaper",
+    "launch_app": "Launch App"
+  },
+  "footer": {
+    "tagline": "Securing digital legacies across generations",
+    "rights": "© 2025 Dielemma. All rights reserved."
+  }
+}

@@ -1,20 +1,22 @@
+import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+
+import MobileContainer from './components/MobileContainer';
+import AppNavigator from './navigation/AppNavigator';
+import { Chain } from './types';
 
 export default function App() {
+  const [chain, setChain] = useState<Chain>('bsc');
+  const [network, setNetwork] = useState<string>('testnet');
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
+    <MobileContainer>
       <StatusBar style="auto" />
-    </View>
+      <AppNavigator
+        chain={chain}
+        network={network}
+        onChainChange={setChain}
+      />
+    </MobileContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

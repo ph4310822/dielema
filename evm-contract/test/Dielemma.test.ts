@@ -1,11 +1,12 @@
 import { expect } from "chai";
 import { ethers, SignerWithAddress } from "hardhat";
-import { Dielemma, MockERC20 } from "../typechain-types";
+import { Dielemma, MockERC20, DielemmaToken } from "../typechain-types";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 
 // Import contract types
 describe("Dielemma Contract", function () {
   let dielemma: Dielemma;
+  let dielemmaToken: DielemmaToken;
   let mockToken: MockERC20;
   let owner: SignerWithAddress;
   let depositor: SignerWithAddress;
@@ -19,6 +20,14 @@ describe("Dielemma Contract", function () {
     // Deploy mock ERC20 token
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     mockToken = await MockERC20.deploy("Mock Token", "MTK");
+
+    // Deploy DielemmaToken
+    const DielemmaToken = await ethers.getContractFactory("DielemmaToken");
+    dielemmaToken = await DielemmaToken.deploy(ethers.parseEther("1000000"));
+    await dielemmaToken.waitForDeployment();
+
+    // Set official token in Dielemma contract
+    await dielemma.connect(owner).setOfficialToken(await dielemmaToken.getAddress());
   }
 
   beforeEach(async function () {
@@ -56,7 +65,8 @@ describe("Dielemma Contract", function () {
         receiver.address,
         ethers.ZeroAddress, // Zero address for native token
         DEPOSIT_AMOUNT,
-        ONE_DAY
+        ONE_DAY,
+        { value: DEPOSIT_AMOUNT }
       );
 
       // Get deposit ID from event
@@ -90,7 +100,8 @@ describe("Dielemma Contract", function () {
           receiver.address,
           ethers.ZeroAddress,
           DEPOSIT_AMOUNT,
-          0
+          0,
+          { value: DEPOSIT_AMOUNT }
         )
       ).to.be.revertedWithCustomError(dielemma, "InvalidTimeout");
     });
@@ -101,7 +112,8 @@ describe("Dielemma Contract", function () {
           ethers.ZeroAddress,
           ethers.ZeroAddress,
           DEPOSIT_AMOUNT,
-          ONE_DAY
+          ONE_DAY,
+          { value: DEPOSIT_AMOUNT }
         )
       ).to.be.revertedWithCustomError(dielemma, "InvalidReceiver");
     });
@@ -114,7 +126,8 @@ describe("Dielemma Contract", function () {
           receiver.address,
           ethers.ZeroAddress,
           DEPOSIT_AMOUNT,
-          ONE_DAY
+          ONE_DAY,
+          { value: DEPOSIT_AMOUNT }
         )
       ).to.be.revertedWithCustomError(dielemma, "ContractPaused");
     });
@@ -159,7 +172,8 @@ describe("Dielemma Contract", function () {
         receiver.address,
         ethers.ZeroAddress,
         DEPOSIT_AMOUNT,
-        ONE_DAY
+        ONE_DAY,
+        { value: DEPOSIT_AMOUNT }
       );
 
       const receipt = await depositTx.wait();
@@ -170,6 +184,12 @@ describe("Dielemma Contract", function () {
     });
 
     it("Should allow depositor to update proof of life", async function () {
+      // Transfer tokens from owner to depositor for testing
+      await dielemmaToken.transfer(depositor.address, ethers.parseEther("10"));
+
+      // Approve tokens for burning
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), ethers.parseEther("1"));
+
       const initialTimestamp = (await dielemma.getDeposit(depositId)).deposit.lastProofTimestamp;
 
       // Advance time
@@ -208,7 +228,8 @@ describe("Dielemma Contract", function () {
         receiver.address,
         ethers.ZeroAddress,
         DEPOSIT_AMOUNT,
-        ONE_DAY
+        ONE_DAY,
+        { value: DEPOSIT_AMOUNT }
       );
 
       const receipt = await depositTx.wait();
@@ -262,7 +283,8 @@ describe("Dielemma Contract", function () {
         receiver.address,
         ethers.ZeroAddress,
         DEPOSIT_AMOUNT,
-        ONE_DAY
+        ONE_DAY,
+        { value: DEPOSIT_AMOUNT }
       );
 
       const receipt = await depositTx.wait();
@@ -355,7 +377,8 @@ describe("Dielemma Contract", function () {
         receiver.address,
         ethers.ZeroAddress,
         DEPOSIT_AMOUNT,
-        ONE_DAY
+        ONE_DAY,
+        { value: DEPOSIT_AMOUNT }
       );
 
       const receipt = await depositTx.wait();
@@ -383,6 +406,154 @@ describe("Dielemma Contract", function () {
     it("Should return receiver deposits", async function () {
       const receiverDeposits = await dielemma.getReceiverDeposits(receiver.address);
       expect(receiverDeposits).to.include(depositId);
+    });
+  });
+
+  describe("Token Burning - Proof of Life", function () {
+    let depositId: bigint;
+    const BURN_AMOUNT = ethers.parseEther("1");
+    const BURN_ADDRESS = "0x000000000000000000000000000000000000dEaD";
+
+    beforeEach(async function () {
+      // Transfer tokens from owner to depositor for testing
+      await dielemmaToken.transfer(depositor.address, ethers.parseEther("100"));
+
+      // Create a deposit
+      const depositTx = await dielemma.connect(depositor).deposit(
+        receiver.address,
+        ethers.ZeroAddress,
+        DEPOSIT_AMOUNT,
+        ONE_DAY,
+        { value: DEPOSIT_AMOUNT }
+      );
+
+      const receipt = await depositTx.wait();
+      const event = receipt?.logs.find((log: any) => log.fragment?.name === "Deposited");
+      depositId = event?.args[0];
+    });
+
+    it("Should burn 1 token on proofOfLife", async function () {
+      // Approve tokens
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), BURN_AMOUNT);
+
+      // Check initial balance
+      const initialBalance = await dielemmaToken.balanceOf(depositor.address);
+
+      // Call proofOfLife
+      await dielemma.connect(depositor).proofOfLife(depositId);
+
+      // Check final balance
+      const finalBalance = await dielemmaToken.balanceOf(depositor.address);
+      expect(finalBalance).to.equal(initialBalance - BURN_AMOUNT);
+
+      // Verify burn address received the tokens
+      const burnAddressBalance = await dielemmaToken.balanceOf(BURN_ADDRESS);
+      expect(burnAddressBalance).to.equal(BURN_AMOUNT);
+    });
+
+    it("Should fail when official token is not set", async function () {
+      // Unset official token
+      await dielemma.connect(owner).setOfficialToken(ethers.ZeroAddress);
+
+      // Transfer tokens to depositor
+      await dielemmaToken.transfer(depositor.address, ethers.parseEther("10"));
+
+      // Approve tokens
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), BURN_AMOUNT);
+
+      await expect(dielemma.connect(depositor).proofOfLife(depositId)).to.be.revertedWithCustomError(
+        dielemma,
+        "OfficialTokenNotSet"
+      );
+    });
+
+    it("Should fail when user hasn't approved tokens", async function () {
+      // ERC20's transferFrom will revert with ERC20InsufficientAllowance error
+      // Our contract's BurnFailed is never reached because transferFrom reverts
+      await expect(dielemma.connect(depositor).proofOfLife(depositId)).to.be.reverted;
+    });
+
+    it("Should fail when user doesn't have enough tokens", async function () {
+      // Transfer 99.5 tokens from depositor to owner to leave them with only 0.5 tokens
+      await dielemmaToken.connect(depositor).transfer(owner.address, ethers.parseEther("99.5"));
+
+      // Approve 1 token (more than the 0.5 they have)
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), BURN_AMOUNT);
+
+      // ERC20's transferFrom will revert with ERC20InsufficientBalance error
+      await expect(dielemma.connect(depositor).proofOfLife(depositId)).to.be.reverted;
+    });
+
+    it("Should emit TokenBurned event", async function () {
+      // Approve tokens
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), BURN_AMOUNT);
+
+      await expect(dielemma.connect(depositor).proofOfLife(depositId))
+        .to.emit(dielemma, "TokenBurned")
+        .withArgs(depositId, depositor.address, BURN_AMOUNT);
+    });
+
+    it("Should emit TokenBurned event with correct parameters", async function () {
+      // Approve tokens
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), BURN_AMOUNT);
+
+      const tx = await dielemma.connect(depositor).proofOfLife(depositId);
+      const receipt = await tx.wait();
+
+      // Find TokenBurned event
+      const tokenBurnedEvent = receipt?.logs.find((log: any) => log.fragment?.name === "TokenBurned");
+
+      expect(tokenBurnedEvent).to.not.be.undefined;
+      expect(tokenBurnedEvent?.args[0]).to.equal(depositId);
+      expect(tokenBurnedEvent?.args[1]).to.equal(depositor.address);
+      expect(tokenBurnedEvent?.args[2]).to.equal(BURN_AMOUNT);
+    });
+
+    it("Should allow multiple proofOfLife calls with token burning", async function () {
+      // Approve enough tokens for multiple burns
+      await dielemmaToken.connect(depositor).approve(await dielemma.getAddress(), ethers.parseEther("3"));
+
+      const initialBalance = await dielemmaToken.balanceOf(depositor.address);
+
+      // First proofOfLife
+      await dielemma.connect(depositor).proofOfLife(depositId);
+      let balance = await dielemmaToken.balanceOf(depositor.address);
+      expect(balance).to.equal(initialBalance - BURN_AMOUNT);
+
+      // Advance time
+      await time.increase(3600);
+
+      // Second proofOfLife
+      await dielemma.connect(depositor).proofOfLife(depositId);
+      balance = await dielemmaToken.balanceOf(depositor.address);
+      expect(balance).to.equal(initialBalance - BURN_AMOUNT * 2n);
+
+      // Advance time again
+      await time.increase(3600);
+
+      // Third proofOfLife
+      await dielemma.connect(depositor).proofOfLife(depositId);
+      balance = await dielemmaToken.balanceOf(depositor.address);
+      expect(balance).to.equal(initialBalance - BURN_AMOUNT * 3n);
+    });
+
+    it("Should allow owner to update official token", async function () {
+      const newToken = await dielemmaToken.getAddress();
+
+      await expect(dielemma.connect(owner).setOfficialToken(newToken))
+        .to.emit(dielemma, "OfficialTokenUpdated")
+        .withArgs(await dielemma.getOfficialToken(), newToken);
+    });
+
+    it("Should fail when non-owner tries to set official token", async function () {
+      await expect(
+        dielemma.connect(other).setOfficialToken(await dielemmaToken.getAddress())
+      ).to.be.revertedWithCustomError(dielemma, "Unauthorized");
+    });
+
+    it("Should return official token address from getOfficialToken", async function () {
+      const officialToken = await dielemma.getOfficialToken();
+      expect(officialToken).to.equal(await dielemmaToken.getAddress());
     });
   });
 });

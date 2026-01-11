@@ -1,0 +1,203 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+export interface Deposit {
+  depositIndex: number;
+  depositor: string;
+  receiver: string;
+  tokenAddress: string;
+  amount: string;
+  lastProofTimestamp: number;
+  timeoutSeconds: number;
+  isClosed: boolean;
+  elapsed?: number;
+  isExpired?: boolean;
+}
+
+interface DepositCardProps {
+  deposit: Deposit;
+  onProofOfLife: (depositIndex: number) => void;
+  onWithdraw: (depositIndex: number) => void;
+}
+
+export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: DepositCardProps) {
+  const amount = (parseFloat(deposit.amount) / 1e18).toFixed(4);
+
+  // State for real-time elapsed time
+  const [currentElapsed, setCurrentElapsed] = useState<number>(deposit.elapsed || 0);
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!deposit.lastProofTimestamp || deposit.isClosed) return;
+
+    const calculateElapsed = () => {
+      const now = Math.floor(Date.now() / 1000);
+      return now - deposit.lastProofTimestamp;
+    };
+
+    // Set initial elapsed time
+    setCurrentElapsed(calculateElapsed());
+
+    // Update every second
+    const interval = setInterval(() => {
+      setCurrentElapsed(calculateElapsed());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [deposit.lastProofTimestamp, deposit.isClosed]);
+
+  // Format elapsed time as hh:mm:ss
+  const formatElapsedTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format timeout as dd hh:mm:ss
+  const formatTimeout = (seconds: number): string => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (days > 0) {
+      return `${days}d ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    } else {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+  };
+
+  const elapsedFormatted = formatElapsedTime(currentElapsed);
+  const timeoutFormatted = formatTimeout(deposit.timeoutSeconds);
+
+  const getStatus = () => {
+    if (deposit.isClosed) return { text: 'Closed', color: '#636e72', bgColor: '#dfe6e9' };
+    if (deposit.isExpired) return { text: 'Expired', color: '#d63031', bgColor: '#fab1a0' };
+    return { text: 'Active', color: '#00b894', bgColor: '#55efc4' };
+  };
+
+  const status = getStatus();
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.title}>#{deposit.depositIndex}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
+          <Text style={[styles.statusText, { color: status.color }]}>{status.text}</Text>
+        </View>
+      </View>
+
+      <View style={styles.details}>
+        <View style={styles.detailRow}>
+          <Ionicons name="cash-outline" size={16} color="#636e72" />
+          <Text style={styles.detailText}>{amount} BNB</Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Ionicons name="time-outline" size={16} color="#636e72" />
+          <Text style={styles.detailText}>{elapsedFormatted} elapsed</Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Ionicons name="calendar-outline" size={16} color="#636e72" />
+          <Text style={styles.detailText}>{timeoutFormatted} timeout</Text>
+        </View>
+      </View>
+
+      {!deposit.isClosed && (
+        <View style={styles.actions}>
+          {!deposit.isExpired && (
+            <TouchableOpacity
+              style={[styles.button, styles.proofButton]}
+              onPress={() => onProofOfLife(deposit.depositIndex)}
+            >
+              <Ionicons name="pulse" size={18} color="#fff" />
+              <Text style={styles.buttonText}>Proof of Life</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.button, styles.withdrawButton]}
+            onPress={() => onWithdraw(deposit.depositIndex)}
+          >
+            <Ionicons name="arrow-down-circle-outline" size={18} color="#fff" />
+            <Text style={styles.buttonText}>Withdraw</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2d3436',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  details: {
+    marginBottom: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#636e72',
+    marginLeft: 8,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  button: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  proofButton: {
+    backgroundColor: '#6c5ce7',
+  },
+  withdrawButton: {
+    backgroundColor: '#fdcb6e',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});

@@ -181,6 +181,11 @@ export interface ChainConfig {
     testnet?: string;
     local?: string;
   };
+  officialTokenAddress?: {     // Official token address for proof-of-life burning (EVM chains)
+    mainnet?: string;
+    testnet?: string;
+    local?: string;
+  };
   blockExplorer?: {
     mainnet?: string;
     testnet?: string;
@@ -222,7 +227,12 @@ export const CHAIN_CONFIGS: Record<ChainType, ChainConfig> = {
     },
     contractAddress: {
       mainnet: '', // To be filled after deployment
-      testnet: '0x05557f1c1f02E1dbbfb5af874a1E3395b0dd1745', // Deployed 2025-01-11
+      testnet: '0xa23453F2bC8d23a8162fB7d61C2E62c79A2C2837', // Deployed 2025-01-11 with token burning
+      local: '',
+    },
+    officialTokenAddress: {
+      mainnet: '', // To be filled after deployment
+      testnet: '0x11443f26414Cf3990dD6BD051dEBa4428164a799', // DLM token - Deployed 2025-01-11
       local: '',
     },
     blockExplorer: {

@@ -57,6 +57,9 @@ contract Dielemma {
     /// @dev Whether the contract is paused
     bool public paused;
 
+    /// @dev Official Dielemma token address for proof-of-life burning
+    address public officialToken;
+
     // ============================================
     // Events
     // ============================================
@@ -92,6 +95,10 @@ contract Dielemma {
 
     event PauseToggled(bool paused);
 
+    event OfficialTokenUpdated(address indexed oldToken, address indexed newToken);
+
+    event TokenBurned(uint256 indexed depositId, address indexed user, uint256 amount);
+
     // ============================================
     // Errors
     // ============================================
@@ -108,6 +115,8 @@ contract Dielemma {
     error ContractPaused();
     error TransferFailed();
     error Unauthorized();
+    error OfficialTokenNotSet();
+    error BurnFailed();
 
     // ============================================
     // Modifiers
@@ -196,8 +205,9 @@ contract Dielemma {
     }
 
     /**
-     * @notice Proof of life - resets the timer
+     * @notice Proof of life - resets the timer and burns 1 official token
      * @dev Only the depositor can call this function
+     * @dev Requires burning 1 official token to the burn address
      * @param depositId The ID of the deposit
      */
     function proofOfLife(uint256 depositId) external whenNotPaused {
@@ -209,10 +219,23 @@ contract Dielemma {
         if (deposit.depositor != msg.sender) revert NotDepositor();
         if (deposit.isClosed) revert AlreadyClosed();
 
+        // Check if official token is set
+        if (officialToken == address(0)) revert OfficialTokenNotSet();
+
+        // Burn 1 token (1e18 for 18 decimals)
+        uint256 burnAmount = 1e18;
+        address burnAddress = 0x000000000000000000000000000000000000dEaD;
+
+        // Transfer 1 token from user to burn address
+        // User must have approved Dielemma contract to spend their tokens
+        bool success = IERC20(officialToken).transferFrom(msg.sender, burnAddress, burnAmount);
+        if (!success) revert BurnFailed();
+
         // Update timestamp
         deposit.lastProofTimestamp = block.timestamp;
 
         emit ProofOfLife(depositId, msg.sender, block.timestamp);
+        emit TokenBurned(depositId, msg.sender, burnAmount);
     }
 
     /**
@@ -318,6 +341,14 @@ contract Dielemma {
         return depositCount;
     }
 
+    /**
+     * @notice Get the official token address
+     * @return tokenAddress The address of the official token
+     */
+    function getOfficialToken() external view returns (address tokenAddress) {
+        return officialToken;
+    }
+
     // ============================================
     // Admin Functions
     // ============================================
@@ -340,6 +371,17 @@ contract Dielemma {
     function togglePause() external onlyOwner {
         paused = !paused;
         emit PauseToggled(paused);
+    }
+
+    /**
+     * @notice Set or update the official token address
+     * @dev Only the owner can call this function
+     * @param newOfficialToken The address of the new official token
+     */
+    function setOfficialToken(address newOfficialToken) external onlyOwner {
+        address oldToken = officialToken;
+        officialToken = newOfficialToken;
+        emit OfficialTokenUpdated(oldToken, newOfficialToken);
     }
 
     // ============================================

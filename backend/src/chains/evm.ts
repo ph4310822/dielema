@@ -24,19 +24,24 @@ const DIELEMMA_ABI = [
   'function proofOfLife(uint256 depositId) external',
   'function withdraw(uint256 depositId) external',
   'function claim(uint256 depositId) external',
+  'function setOfficialToken(address newOfficialToken) external',
 
   // Read functions
   'function getDeposit(uint256 depositId) external view returns (tuple(address depositor, address receiver, address token, uint256 amount, uint256 lastProofTimestamp, uint256 timeoutSeconds, bool isClosed) deposit, uint256 elapsed, bool isExpired)',
   'function getUserDeposits(address user) external view returns (uint256[] memory)',
   'function getReceiverDeposits(address receiver) external view returns (uint256[] memory)',
   'function getTotalDeposits() external view returns (uint256)',
+  'function getOfficialToken() external view returns (address tokenAddress)',
   'function deposits(uint256 depositId) external view returns (address depositor, address receiver, address token, uint256 amount, uint256 lastProofTimestamp, uint256 timeoutSeconds, bool isClosed)',
+  'function officialToken() external view returns (address)',
 
   // Events
   'event Deposited(uint256 indexed depositId, address indexed depositor, address indexed receiver, address token, uint256 amount, uint256 timeoutSeconds)',
   'event ProofOfLife(uint256 indexed depositId, address indexed depositor, uint256 timestamp)',
+  'event TokenBurned(uint256 indexed depositId, address indexed user, uint256 amount)',
   'event Withdrawn(uint256 indexed depositId, address indexed depositor, uint256 amount)',
   'event Claimed(uint256 indexed depositId, address indexed receiver, uint256 amount)',
+  'event OfficialTokenUpdated(address indexed oldToken, address indexed newToken)',
 ];
 
 export class EvmService implements IChainService {

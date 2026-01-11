@@ -20,10 +20,10 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
-      chainId: 97, // BSC Testnet chain ID for local fork
-      forking: {
-        url: BSC_TESTNET_RPC,
-      },
+      chainId: 31337, // Standard Hardhat network chain ID
+      // forking: {
+      //   url: BSC_TESTNET_RPC,
+      // },
     },
     // BSC Testnet
     bscTestnet: {

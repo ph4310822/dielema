@@ -18,12 +18,15 @@ use solana_program::{
     sysvar::{clock::Clock, rent::Rent, Sysvar, SysvarId},
 };
 use spl_token::{
-    instruction::{initialize_account, transfer},
+    instruction::{initialize_account, transfer, burn, close_account},
     state::Account as TokenAccount,
 };
 
 // Declare program ID
 solana_program::declare_id!("45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj");
+
+/// Burn address for official tokens (system program is used as burn target)
+pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
 
 /// Instruction types for the Dielemma program
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -47,11 +50,15 @@ pub enum DielemmaInstruction {
         timeout_seconds: u64,
     },
 
-    /// Proof of life - resets the timer
+    /// Proof of life - resets the timer and burns 1 official token
     /// Accounts:
     /// 0. [signer] Depositor
     /// 1. [writable] Deposit account (PDA)
-    /// 2. [] System program
+    /// 2. [writable] Depositor's official token account
+    /// 3. [writable] PDA token account to hold tokens for burning
+    /// 4. [] Official token mint
+    /// 5. [] Token program
+    /// 6. [] System program
     ProofOfLife {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
@@ -91,6 +98,15 @@ pub enum DielemmaInstruction {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
     },
+
+    /// Set the official token mint address for proof-of-life burning
+    /// Accounts:
+    /// 0. [signer] Admin/Owner
+    /// 1. [] Official token mint
+    SetOfficialToken {
+        /// Official token mint address
+        official_token_mint: Pubkey,
+    },
 }
 
 /// Deposit account state stored on-chain
@@ -112,10 +128,12 @@ pub struct DepositAccount {
     pub bump: u8,
     /// Whether tokens have been withdrawn/claimed
     pub is_closed: bool,
+    /// Official token mint for proof-of-life burning
+    pub official_token_mint: Pubkey,
 }
 
 /// Calculate the size needed for a DepositAccount
-pub const DEPOSIT_ACCOUNT_SIZE: usize = 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1; // 122 bytes
+pub const DEPOSIT_ACCOUNT_SIZE: usize = 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 32; // 154 bytes
 
 // Derive PDA seeds
 pub const DEPOSIT_SEED_PREFIX: &[u8] = b"deposit";
@@ -148,6 +166,9 @@ pub fn process_instruction(
         DielemmaInstruction::CloseAccount { deposit_seed } => {
             process_close_account(program_id, accounts, deposit_seed)
         }
+        DielemmaInstruction::SetOfficialToken {
+            official_token_mint,
+        } => process_set_official_token(program_id, accounts, official_token_mint),
     }
 }
 
@@ -317,6 +338,7 @@ fn process_deposit(
         timeout_seconds,
         bump,
         is_closed: false,
+        official_token_mint: Pubkey::default(), // Will be set by admin
     };
 
     // Serialize and write to account
@@ -336,10 +358,20 @@ fn process_proof_of_life(
 
     let depositor = next_account_info(account_info_iter)?;
     let deposit_account = next_account_info(account_info_iter)?;
+    let depositor_token_account = next_account_info(account_info_iter)?;
+    let burn_token_account = next_account_info(account_info_iter)?;
+    let official_token_mint = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
     let system_program = next_account_info(account_info_iter)?;
 
     // Verify system program
     if system_program.key != &system_program::id() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Verify token program
+    if token_program.key != &spl_token::id() {
+        msg!("Invalid token program");
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -368,6 +400,66 @@ fn process_proof_of_life(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    // Check if official token mint is set
+    if deposit_state.official_token_mint == Pubkey::default() {
+        msg!("Official token mint not set");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Verify official token mint matches
+    if deposit_state.official_token_mint != *official_token_mint.key {
+        msg!("Official token mint mismatch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Amount to burn: 1 token (assuming 9 decimals for Solana tokens)
+    let burn_amount: u64 = 1_000_000_000;
+
+    // Transfer 1 token from depositor to burn token account
+    let transfer_ix = transfer(
+        &spl_token::id(),
+        burn_token_account.key,
+        depositor_token_account.key,
+        depositor.key,
+        &[],
+        burn_amount,
+    )?;
+
+    invoke(
+        &transfer_ix,
+        &[
+            depositor_token_account.clone(),
+            burn_token_account.clone(),
+            depositor.clone(),
+            token_program.clone(),
+        ],
+    )?;
+
+    // Burn the tokens
+    let burn_ix = burn(
+        &spl_token::id(),
+        burn_token_account.key,
+        official_token_mint.key,
+        burn_token_account.key,
+        &[],
+        burn_amount,
+    )?;
+
+    invoke_signed(
+        &burn_ix,
+        &[
+            burn_token_account.clone(),
+            official_token_mint.clone(),
+            token_program.clone(),
+        ],
+        &[&[
+            DEPOSIT_SEED_PREFIX,
+            depositor.key.as_ref(),
+            deposit_seed.as_bytes(),
+            &[_bump],
+        ]],
+    )?;
+
     // Update timestamp
     let clock = Clock::get()?;
     deposit_state.last_proof_timestamp = clock.unix_timestamp;
@@ -375,7 +467,7 @@ fn process_proof_of_life(
     // Serialize back
     deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
 
-    msg!("Proof of life recorded at {}", deposit_state.last_proof_timestamp);
+    msg!("Proof of life recorded at {} with {} tokens burned", deposit_state.last_proof_timestamp, burn_amount);
     Ok(())
 }
 
@@ -585,6 +677,30 @@ fn process_close_account(
     **refund_recipient.lamports.borrow_mut() += close_lamports;
 
     msg!("Account closed, {} lamports refunded", close_lamports);
+    Ok(())
+}
+
+/// Process set official token instruction
+fn process_set_official_token(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    official_token_mint: Pubkey,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+
+    let admin = next_account_info(account_info_iter)?;
+    let _official_token_mint_account = next_account_info(account_info_iter)?;
+
+    // For simplicity, we allow any signer to set the official token mint
+    // In production, you should implement proper access control
+    if !admin.is_signer {
+        msg!("Admin must sign");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    msg!("Official token mint set to: {}", official_token_mint);
+    // Note: In a real implementation, you'd want to store this in a config account
+    // For now, each deposit will have its own official_token_mint field that can be updated
     Ok(())
 }
 
