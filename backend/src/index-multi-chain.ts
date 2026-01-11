@@ -1,0 +1,276 @@
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+
+// Import shared types and chain services
+import {
+  ChainType,
+  NetworkType,
+  DepositRequest,
+  ProofOfLifeRequest,
+  WithdrawRequest,
+  ClaimRequest,
+  GetDepositRequest,
+  CHAIN_CONFIGS,
+} from '../../shared/types';
+import { ChainServiceFactory } from './chains/factory';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Default chain configuration (can be overridden per request)
+const DEFAULT_CHAIN: ChainType = (process.env.DEFAULT_CHAIN as ChainType) || ChainType.SOLANA;
+const DEFAULT_NETWORK: NetworkType = (process.env.DEFAULT_NETWORK as NetworkType) || NetworkType.TESTNET;
+
+// Extend Express Request type
+interface ChainRequest extends Request {
+  chainContext?: {
+    chain: ChainType;
+    network: NetworkType;
+  };
+}
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Middleware to validate chain parameter
+const validateChain = (req: ChainRequest, res: Response, next: any) => {
+  const chain = (req.body?.chain || req.params?.chain || req.query?.chain || DEFAULT_CHAIN) as ChainType;
+  const network = (req.body?.network || req.params?.network || req.query?.network || DEFAULT_NETWORK) as NetworkType;
+
+  if (!ChainServiceFactory.isSupported(chain)) {
+    return res.status(400).json({
+      error: `Unsupported chain: ${chain}`,
+      supportedChains: ChainServiceFactory.getSupportedChains(),
+    });
+  }
+
+  req.chainContext = { chain, network };
+  next();
+};
+
+// Health check
+app.get('/api/health', async (req: Request, res: Response) => {
+  try {
+    const query = req.query as any;
+    const selectedChain = (query.chain as ChainType) || DEFAULT_CHAIN;
+    const selectedNetwork = (query.network as NetworkType) || DEFAULT_NETWORK;
+
+    const service = ChainServiceFactory.getService(selectedChain, selectedNetwork);
+    const health = await service.getHealth();
+
+    res.json({
+      ...health,
+      chain: selectedChain,
+      network: selectedNetwork,
+      supportedChains: ChainServiceFactory.getSupportedChains(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Health check failed' });
+  }
+});
+
+// Get supported chains
+app.get('/api/chains', (req: Request, res: Response) => {
+  const chains = ChainServiceFactory.getSupportedChains().map(chainType => {
+    const config = CHAIN_CONFIGS[chainType];
+    return {
+      chain: chainType,
+      chainId: config.chainId,
+      rpcUrls: config.rpcUrls,
+      programId: config.programId,
+      contractAddress: config.contractAddress,
+      blockExplorer: config.blockExplorer,
+      nativeCurrency: config.nativeCurrency,
+    };
+  });
+
+  res.json({
+    success: true,
+    defaultChain: DEFAULT_CHAIN,
+    defaultNetwork: DEFAULT_NETWORK,
+    chains,
+  });
+});
+
+// Create deposit instruction/transaction
+app.post('/api/deposit', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { depositor, receiver, tokenAddress, amount, timeoutSeconds } = req.body;
+
+    if (!depositor || !receiver || !tokenAddress || !amount || timeoutSeconds === undefined) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    const request: DepositRequest = {
+      chain,
+      network,
+      depositor,
+      receiver,
+      tokenAddress,
+      amount: amount.toString(),
+      timeoutSeconds,
+    };
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.createDeposit(request);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error creating deposit:', error);
+    res.status(500).json({ error: error.message || 'Failed to create deposit' });
+  }
+});
+
+// Create proof-of-life instruction/transaction
+app.post('/api/proof-of-life', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { depositId, depositIndex, depositor } = req.body;
+
+    if (!depositId && depositIndex === undefined) {
+      return res.status(400).json({ error: 'depositId or depositIndex is required' });
+    }
+
+    const request: ProofOfLifeRequest = {
+      chain,
+      network,
+      depositId: depositId || '',
+      depositIndex,
+      depositor,
+    };
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.createProofOfLife(request);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error creating proof-of-life:', error);
+    res.status(500).json({ error: error.message || 'Failed to create proof-of-life' });
+  }
+});
+
+// Create withdraw instruction/transaction
+app.post('/api/withdraw', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { depositId, depositIndex, depositor } = req.body;
+
+    if (!depositId && depositIndex === undefined) {
+      return res.status(400).json({ error: 'depositId or depositIndex is required' });
+    }
+
+    const request: WithdrawRequest = {
+      chain,
+      network,
+      depositId: depositId || '',
+      depositIndex,
+      depositor,
+    };
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.createWithdraw(request);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error creating withdraw:', error);
+    res.status(500).json({ error: error.message || 'Failed to create withdraw' });
+  }
+});
+
+// Create claim instruction/transaction
+app.post('/api/claim', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { depositId, depositIndex, receiver } = req.body;
+
+    if (!depositId && depositIndex === undefined) {
+      return res.status(400).json({ error: 'depositId or depositIndex is required' });
+    }
+
+    const request: ClaimRequest = {
+      chain,
+      network,
+      depositId: depositId || '',
+      depositIndex,
+      receiver,
+    };
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.createClaim(request);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error creating claim:', error);
+    res.status(500).json({ error: error.message || 'Failed to create claim' });
+  }
+});
+
+// Get deposit info
+app.get('/api/deposit', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const query = req.query as any;
+    const { depositId, depositIndex } = query;
+
+    if (!depositId && depositIndex === undefined) {
+      return res.status(400).json({ error: 'depositId or depositIndex is required' });
+    }
+
+    const request: GetDepositRequest = {
+      chain,
+      network,
+      depositId: depositId || '',
+      depositIndex: depositIndex ? Number(depositIndex) : undefined,
+    };
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.getDeposit(request);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching deposit:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch deposit' });
+  }
+});
+
+// Get user deposits
+app.get('/api/deposits/:user', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { user } = req.params;
+
+    if (!user || typeof user !== 'string') {
+      return res.status(400).json({ error: 'User address is required' });
+    }
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.getUserDeposits(user);
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching user deposits:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch deposits' });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`
+╔════════════════════════════════════════════════════════════════╗
+║                    Dielemma Backend Server                    ║
+╠════════════════════════════════════════════════════════════════╣
+║  Port:              ${PORT.toString().padEnd(44)}║
+║  Default Chain:     ${(DEFAULT_CHAIN || 'solana').padEnd(44)}║
+║  Default Network:   ${(DEFAULT_NETWORK || 'testnet').padEnd(44)}║
+║  Supported Chains:  ${ChainServiceFactory.getSupportedChains().join(', ').padEnd(44)}║
+╚════════════════════════════════════════════════════════════════╝
+  `);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Supported chains: http://localhost:${PORT}/api/chains`);
+});
