@@ -6,22 +6,22 @@ import { StatusBar } from 'expo-status-bar';
 import HomeScreen from '../screens/HomeScreen';
 import AddDepositScreen from '../screens/AddDepositScreen';
 import ProofOfLifeScreen from '../screens/ProofOfLifeScreen';
-import { Chain } from '../types';
+import { Chain, Network } from '../types';
 
 export type RootStackParamList = {
   Home: {
     chain?: Chain;
-    network?: string;
+    network?: Network;
   };
   AddDeposit: {
     chain: Chain;
-    network: string;
+    network: Network;
     walletAddress: string;
   };
   ProofOfLife: {
     depositIndex: number;
     chain: Chain;
-    network: string;
+    network: Network;
     walletAddress: string;
   };
 };
@@ -30,11 +30,12 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 interface AppNavigatorProps {
   chain: Chain;
-  network: string;
+  network: Network;
   onChainChange: (chain: Chain) => void;
+  onNetworkChange: (network: Network) => void;
 }
 
-export default function AppNavigator({ chain, network, onChainChange }: AppNavigatorProps) {
+export default function AppNavigator({ chain, network, onChainChange, onNetworkChange }: AppNavigatorProps) {
   return (
     <NavigationContainer>
       <StatusBar style="auto" />
@@ -52,6 +53,7 @@ export default function AppNavigator({ chain, network, onChainChange }: AppNavig
               chain={chain}
               network={network}
               onChainChange={onChainChange}
+              onNetworkChange={onNetworkChange}
             />
           )}
         />

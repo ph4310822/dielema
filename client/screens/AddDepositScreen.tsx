@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/native';
 
-import { RootStackParamList, Chain } from '../types';
+import { RootStackParamList, Chain, Network } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 
 type AddDepositScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddDeposit'>;
@@ -23,7 +23,7 @@ interface AddDepositScreenProps {
   route: {
     params: {
       chain: Chain;
-      network: string;
+      network: Network;
       walletAddress: string;
     };
   };

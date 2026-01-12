@@ -16,7 +16,7 @@ import { StackNavigationProp, useFocusEffect } from '@react-navigation/native';
 import ChainSelector from '../components/ChainSelector';
 import DepositCard, { Deposit } from '../components/DepositCard';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import { RootStackParamList, Chain } from '../types';
+import { RootStackParamList, Chain, Network } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
@@ -24,8 +24,9 @@ type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 interface HomeScreenProps {
   navigation: HomeScreenNavigationProp;
   chain: Chain;
-  network: string;
+  network: Network;
   onChainChange: (chain: Chain) => void;
+  onNetworkChange: (network: Network) => void;
 }
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
@@ -176,7 +177,12 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <ChainSelector selectedChain={chain} onChainChange={onChainChange} />
+        <ChainSelector
+          selectedChain={chain}
+          selectedNetwork={network}
+          onChainChange={onChainChange}
+          onNetworkChange={onNetworkChange}
+        />
         <View style={styles.headerActions}>
           <LanguageSwitcher />
           {connected && (

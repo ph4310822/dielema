@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/native';
 
-import { RootStackParamList, Chain } from '../types';
+import { RootStackParamList, Chain, Network } from '../types';
 import {
   getDLMBalance,
   getAllowance,
@@ -28,7 +28,7 @@ interface ProofOfLifeScreenProps {
     params: {
       depositIndex: number;
       chain: Chain;
-      network: string;
+      network: Network;
       walletAddress: string;
     };
   };

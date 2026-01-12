@@ -3,12 +3,12 @@ import { StatusBar } from 'expo-status-bar';
 
 import MobileContainer from './components/MobileContainer';
 import AppNavigator from './navigation/AppNavigator';
-import { Chain } from './types';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { Chain, Network } from './types';
 
 export default function App() {
-  const [chain, setChain] = useState<Chain>('bnbTestnet');
-  const [network, setNetwork] = useState<string>('testnet');
+  const [chain, setChain] = useState<Chain>('bsc');
+  const [network, setNetwork] = useState<Network>('testnet');
 
   return (
     <LanguageProvider>
@@ -18,6 +18,7 @@ export default function App() {
           chain={chain}
           network={network}
           onChainChange={setChain}
+          onNetworkChange={setNetwork}
         />
       </MobileContainer>
     </LanguageProvider>

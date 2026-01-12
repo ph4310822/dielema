@@ -32,14 +32,14 @@ const ERC20_ABI = [
   },
 ];
 
-// DLM Token addresses from chain config
+// DLM Token addresses from backend shared types
 const DLM_TOKEN_ADDRESSES: Record<string, string> = {
   bsc_testnet: '0x11443f26414Cf3990dD6BD051dEBa4428164a799',
   // Add other chains as needed
 };
 
 const DLM_CONTRACT_ADDRESS: Record<string, string> = {
-  bsc_testnet: '0x05557f1c1f02E1dbbfb5af874a1E3395b0dd1745', // Deployed contract (updated address)
+  bsc_testnet: '0xa23453F2bC8d23a8162fB7d61C2E62c79A2C2837', // Deployed 2025-01-11 with token burning
 };
 
 // Get DLM token address for chain/network
