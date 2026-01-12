@@ -1,5 +1,14 @@
-import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl, Transaction } from '@solana/web3.js';
 import { Chain, Network } from '../types';
+import {
+  isMobileWalletAdapterAvailable,
+  connectMobileWallet,
+  getMobileWalletAddress,
+  isMobileWalletConnected,
+  disconnectMobileWallet,
+  signAndSendMobileTransaction,
+} from './solanaMobileWallet';
+import { BUILD_CONFIG } from '../config/buildConfig';
 
 // ============ Type Definitions ============
 export interface WalletConnection {
@@ -272,11 +281,38 @@ export async function sendEVMTransaction(txParams: any): Promise<string> {
 // ============ Solana Wallet Functions ============
 
 /**
- * Connect to Solana wallet (Phantom, etc.)
+ * Connect to Solana wallet
+ * On Android (dev build): Uses Solana Mobile Wallet Adapter
+ * On Android (Expo Go) / Web / iOS: Uses Phantom browser extension or deeplink
  */
 export async function connectSolanaWallet(): Promise<string> {
   console.log('[wallet] connectSolanaWallet called');
+  console.log('[wallet] Platform:', BUILD_CONFIG.isAndroid ? 'Android' : BUILD_CONFIG.isIOS ? 'iOS' : 'Web');
+  
+  // Check if Mobile Wallet Adapter is available (Android dev build only)
+  if (BUILD_CONFIG.isAndroid) {
+    const mwaAvailable = await isMobileWalletAdapterAvailable();
+    if (mwaAvailable) {
+      console.log('[wallet] Using Mobile Wallet Adapter (Android dev build)');
+      return connectMobileWallet();
+    }
+    console.log('[wallet] Mobile Wallet Adapter not available, falling back to deeplink/browser');
+  }
+  
+  // Use browser extension (Phantom) on web, or deeplink on mobile
+  console.log('[wallet] Using browser wallet (Phantom)');
+  
   if (typeof window === 'undefined') {
+    // On native without MWA, we can't connect via window.solana
+    // For Expo Go, show a helpful message
+    if (BUILD_CONFIG.isAndroid || BUILD_CONFIG.isIOS) {
+      throw new Error(
+        'Mobile Wallet Adapter not available in Expo Go.\n\n' +
+        'To test on mobile:\n' +
+        '1. Create a development build: npx expo run:android\n' +
+        '2. Or test on web: npx expo start --web'
+      );
+    }
     throw new Error('Window object not available');
   }
 
@@ -284,8 +320,14 @@ export async function connectSolanaWallet(): Promise<string> {
   console.log('[wallet] Solana provider:', provider ? 'found' : 'not found');
   console.log('[wallet] isPhantom:', provider?.isPhantom);
 
-  if (!provider?.isPhantom) {
-    throw new Error('No Solana wallet found. Please install Phantom wallet.');
+  // Guard against undefined provider
+  if (!provider) {
+    throw new Error(
+      'No Solana wallet found.\n\n' +
+      (BUILD_CONFIG.isAndroid || BUILD_CONFIG.isIOS
+        ? 'Mobile Wallet Adapter is not available.\n\nOptions:\n• Create a development build: npx expo run:android\n• Test on web instead: npx expo start --web'
+        : 'Please install Phantom wallet extension.')
+    );
   }
 
   console.log('[wallet] Calling provider.connect()...');
@@ -302,6 +344,15 @@ export async function connectSolanaWallet(): Promise<string> {
  * Get current Solana wallet address
  */
 export async function getSolanaWalletAddress(): Promise<string | null> {
+  // Check Mobile Wallet Adapter first on Android
+  if (BUILD_CONFIG.isAndroid && isMobileWalletConnected()) {
+    const mobileAddress = getMobileWalletAddress();
+    if (mobileAddress) {
+      return mobileAddress;
+    }
+  }
+  
+  // Check browser extension (Phantom)
   if (typeof window === 'undefined') {
     return null;
   }
@@ -328,6 +379,13 @@ export async function getSolanaWalletAddress(): Promise<string | null> {
  * Disconnect Solana wallet
  */
 export async function disconnectSolanaWallet(): Promise<void> {
+  // Disconnect Mobile Wallet Adapter on Android if connected
+  if (BUILD_CONFIG.isAndroid && isMobileWalletConnected()) {
+    disconnectMobileWallet();
+    return;
+  }
+  
+  // Disconnect browser extension (Phantom)
   if (typeof window === 'undefined') {
     return;
   }
@@ -348,16 +406,19 @@ export async function disconnectSolanaWallet(): Promise<void> {
 /**
  * Send transaction using Solana wallet
  */
-export async function sendSolanaTransaction(transaction: any): Promise<string> {
+export async function sendSolanaTransaction(transaction: Transaction): Promise<string> {
+  // Use Mobile Wallet Adapter on Android if connected via MWA
+  if (BUILD_CONFIG.isAndroid && isMobileWalletConnected()) {
+    console.log('[wallet] Sending transaction via Mobile Wallet Adapter');
+    return signAndSendMobileTransaction(transaction);
+  }
+  
+  // Use browser extension (Phantom) on web/iOS
   if (typeof window === 'undefined') {
     throw new Error('Window object not available');
   }
 
   const provider = (window as any).solana;
-
-  if (!provider?.isPhantom) {
-    throw new Error('No Solana wallet found. Please install Phantom wallet.');
-  }
 
   const connection = new Connection(getRpcUrl('solana', 'devnet'), 'confirmed');
 

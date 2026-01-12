@@ -30,6 +30,10 @@ import {
   TokenBalance,
   amountToSmallestUnit as solAmountToSmallestUnit,
 } from '../utils/solanaTokens';
+import {
+  getConnection,
+  buildDepositTransaction,
+} from '../utils/solanaProgram';
 
 type AddDepositScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddDeposit'>;
 
@@ -197,128 +201,16 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
     console.log('[AddDepositScreen] Validation passed, creating deposit...');
     setLoading(true);
-    try {
-      // Build request data based on chain
-      let tokenAddress = '';
-      let amountValue = '';
 
-      if (isEVM(chain)) {
-        tokenAddress = '0x0000000000000000000000000000000000000000'; // Native token
-        amountValue = (parseFloat(amount) * 1e18).toString();
-      } else if (isSolana(chain) && selectedToken) {
-        tokenAddress = selectedToken.mint;
-        amountValue = solAmountToSmallestUnit(parseFloat(amount), selectedToken.decimals).toString();
+    try {
+      if (isSolana(chain) && selectedToken) {
+        // Solana: Build and send transaction directly (no backend needed)
+        await createSolanaDeposit();
+      } else if (isEVM(chain)) {
+        // EVM: Use backend API
+        await createEVMDeposit();
       } else {
         Alert.alert('Error', 'Unsupported chain');
-        return;
-      }
-
-      const requestData = {
-        chain,
-        network,
-        depositor: walletAddress,
-        receiver,
-        tokenAddress,
-        amount: amountValue,
-        timeoutSeconds: getTimeoutSeconds(),
-      };
-      console.log('[AddDepositScreen] Request data:', requestData);
-
-      const response = await fetch(`${API_URL}/api/deposit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData),
-      });
-
-      console.log('[AddDepositScreen] Response status:', response.status);
-      const result = await response.json();
-      console.log('[AddDepositScreen] Response result:', result);
-
-      if (result.success) {
-        console.log('[AddDepositScreen] Deposit created successfully, data:', result.data);
-
-        if (isEVM(chain)) {
-          // EVM: Send transaction via MetaMask
-          if (result.data && (window as any).ethereum) {
-            try {
-              // Convert decimal value to hex for MetaMask
-              let valueHex = '0x0';
-              if (result.data.value) {
-                if (!result.data.value.startsWith('0x')) {
-                  const valueBigInt = BigInt(result.data.value);
-                  valueHex = '0x' + valueBigInt.toString(16);
-                  console.log('[AddDepositScreen] Converted value from', result.data.value, 'to', valueHex);
-                } else {
-                  valueHex = result.data.value;
-                }
-              }
-
-              const txParams: any = {
-                from: walletAddress,
-                to: result.data.to,
-                data: result.data.data,
-                value: valueHex,
-              };
-
-              if (result.data.gasEstimate) {
-                txParams.gas = result.data.gasEstimate;
-                console.log('[AddDepositScreen] Using gas estimate:', result.data.gasEstimate);
-              }
-
-              console.log('[AddDepositScreen] Transaction params:', txParams);
-              const txHash = await sendEVMTransaction(txParams);
-              console.log('[AddDepositScreen] Transaction sent:', txHash);
-              Alert.alert('Success!', `Transaction sent: ${txHash}`);
-              navigation.goBack();
-            } catch (txError: any) {
-              console.error('[AddDepositScreen] Transaction failed:', txError);
-              Alert.alert('Error', txError?.message || 'Transaction failed');
-            }
-          } else {
-            console.error('[AddDepositScreen] No ethereum wallet found');
-            Alert.alert('Error', 'No wallet found. Please install MetaMask.');
-          }
-        } else if (isSolana(chain)) {
-          // Solana: Sign and send transaction using Phantom
-          try {
-            if (!result.data || !result.data.programId) {
-              throw new Error('Invalid transaction data from backend');
-            }
-
-            const { Transaction, SystemProgram } = await import('@solana/web3.js');
-
-            // Build transaction from backend response
-            const tx = new Transaction();
-            tx.add({
-              keys: result.data.keys.map((k: any) => ({
-                pubkey: new PublicKey(k.pubkey),
-                isSigner: k.isSigner,
-                isWritable: k.isWritable,
-              })),
-              programId: new PublicKey(result.data.programId),
-              data: Buffer.from(result.data.instructionData, 'base64'),
-            });
-
-            // Sign and send via Phantom
-            const provider = (window as any).solana;
-            if (!provider?.signAndSendTransaction) {
-              throw new Error('Phantom wallet not found');
-            }
-
-            const { signature } = await provider.signAndSendTransaction(tx);
-            console.log('[AddDepositScreen] Solana transaction sent:', signature);
-            Alert.alert('Success!', `Deposit created: ${signature}`);
-            navigation.goBack();
-          } catch (txError: any) {
-            console.error('[AddDepositScreen] Solana transaction failed:', txError);
-            Alert.alert('Error', txError?.message || 'Solana transaction failed');
-          }
-        } else {
-          Alert.alert('Error', 'Unsupported chain');
-        }
-      } else {
-        console.error('[AddDepositScreen] Deposit creation failed:', result);
-        Alert.alert('Error', result.error || 'Failed to create deposit');
       }
     } catch (error: any) {
       console.error('[AddDepositScreen] Exception caught:', error);
@@ -327,6 +219,114 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
       console.log('[AddDepositScreen] Setting loading to false');
       setLoading(false);
     }
+  };
+
+  // Solana deposit - built entirely on frontend, no backend needed
+  const createSolanaDeposit = async () => {
+    if (!selectedToken) {
+      throw new Error('No token selected');
+    }
+
+    const { PublicKey } = await import('@solana/web3.js');
+
+    const depositorPubkey = new PublicKey(walletAddress);
+    const receiverPubkey = new PublicKey(receiver);
+    const tokenMintPubkey = new PublicKey(selectedToken.mint);
+    const amountBigInt = BigInt(solAmountToSmallestUnit(parseFloat(amount), selectedToken.decimals));
+    const timeoutBigInt = BigInt(getTimeoutSeconds());
+
+    // Get connection
+    const connection = getConnection(network);
+
+    // Build transaction using frontend utility
+    const { transaction, depositSeed } = await buildDepositTransaction(
+      connection,
+      depositorPubkey,
+      receiverPubkey,
+      tokenMintPubkey,
+      amountBigInt,
+      timeoutBigInt
+    );
+
+    // Sign and send via Phantom
+    const provider = (window as any).solana;
+    if (!provider?.signAndSendTransaction) {
+      throw new Error('Phantom wallet not found. Please install Phantom.');
+    }
+
+    const { signature } = await provider.signAndSendTransaction(transaction);
+
+    console.log('[AddDepositScreen] Solana transaction sent:', signature);
+    Alert.alert('Success!', `Deposit created!\nSignature: ${signature}\nDeposit ID: ${depositSeed}`);
+    navigation.goBack();
+  };
+
+  // EVM deposit - uses backend API
+  const createEVMDeposit = async () => {
+    const tokenAddress = '0x0000000000000000000000000000000000000000'; // Native token
+    const amountValue = (parseFloat(amount) * 1e18).toString();
+
+    const requestData = {
+      chain,
+      network,
+      depositor: walletAddress,
+      receiver,
+      tokenAddress,
+      amount: amountValue,
+      timeoutSeconds: getTimeoutSeconds(),
+    };
+    console.log('[AddDepositScreen] EVM Request data:', requestData);
+
+    const response = await fetch(`${API_URL}/api/deposit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData),
+    });
+
+    console.log('[AddDepositScreen] Response status:', response.status);
+    const result = await response.json();
+    console.log('[AddDepositScreen] Response result:', result);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to create deposit');
+    }
+
+    console.log('[AddDepositScreen] Deposit created successfully, data:', result.data);
+
+    // EVM: Send transaction via MetaMask
+    if (!result.data || !(window as any).ethereum) {
+      throw new Error('No wallet found. Please install MetaMask.');
+    }
+
+    // Convert decimal value to hex for MetaMask
+    let valueHex = '0x0';
+    if (result.data.value) {
+      if (!result.data.value.startsWith('0x')) {
+        const valueBigInt = BigInt(result.data.value);
+        valueHex = '0x' + valueBigInt.toString(16);
+        console.log('[AddDepositScreen] Converted value from', result.data.value, 'to', valueHex);
+      } else {
+        valueHex = result.data.value;
+      }
+    }
+
+    const txParams: any = {
+      from: walletAddress,
+      to: result.data.to,
+      data: result.data.data,
+      value: valueHex,
+    };
+
+    if (result.data.gasEstimate) {
+      txParams.gas = result.data.gasEstimate;
+      console.log('[AddDepositScreen] Using gas estimate:', result.data.gasEstimate);
+    }
+
+    console.log('[AddDepositScreen] Transaction params:', txParams);
+    const txHash = await sendEVMTransaction(txParams);
+    console.log('[AddDepositScreen] Transaction sent:', txHash);
+    Alert.alert('Success!', `Transaction sent: ${txHash}`);
+    navigation.goBack();
   };
 
   return (
@@ -356,14 +356,25 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
                 <ActivityIndicator color="#50d56b" />
               ) : selectedToken ? (
                 <>
-                  {selectedToken.logoURI && (
+                  {selectedToken.logoURI ? (
                     <Image
                       source={{ uri: selectedToken.logoURI }}
                       style={styles.tokenLogo}
                     />
+                  ) : (
+                    <View style={[styles.tokenLogo, styles.tokenLogoPlaceholder]}>
+                      <Ionicons name="cube-outline" size={18} color="#636e72" />
+                    </View>
                   )}
                   <View style={styles.tokenInfo}>
-                    <Text style={styles.tokenSymbol}>{selectedToken.symbol}</Text>
+                    <View style={styles.tokenNameRow}>
+                      <Text style={styles.tokenSymbol}>{selectedToken.symbol}</Text>
+                      {selectedToken.isNative && (
+                        <View style={styles.nativeBadge}>
+                          <Text style={styles.nativeBadgeText}>Native</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.tokenBalance}>
                       Balance: {selectedToken.uiAmount}
                     </Text>
@@ -568,11 +579,22 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
                     setTokenModalVisible(false);
                   }}
                 >
-                  {token.logoURI && (
+                  {token.logoURI ? (
                     <Image source={{ uri: token.logoURI }} style={styles.tokenLogo} />
+                  ) : (
+                    <View style={[styles.tokenLogo, styles.tokenLogoPlaceholder]}>
+                      <Ionicons name="cube-outline" size={18} color="#636e72" />
+                    </View>
                   )}
                   <View style={styles.tokenItemInfo}>
-                    <Text style={styles.tokenSymbol}>{token.symbol}</Text>
+                    <View style={styles.tokenNameRow}>
+                      <Text style={styles.tokenSymbol}>{token.symbol}</Text>
+                      {token.isNative && (
+                        <View style={styles.nativeBadge}>
+                          <Text style={styles.nativeBadgeText}>Native</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.tokenName}>{token.name}</Text>
                   </View>
                   <View style={styles.tokenBalanceContainer}>
@@ -850,6 +872,27 @@ const styles = StyleSheet.create({
   tokenItemInfo: {
     flex: 1,
     marginLeft: 12,
+  },
+  tokenNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nativeBadge: {
+    backgroundColor: '#9945FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  nativeBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  tokenLogoPlaceholder: {
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tokenName: {
     fontSize: 12,

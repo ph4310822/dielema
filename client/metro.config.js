@@ -12,4 +12,9 @@ config.resolver.extraNodeModules = {
   buffer: require.resolve('buffer'),
 };
 
+// MWA (Mobile Wallet Adapter) packages are pure JavaScript - they use React Native's Linking API
+// to communicate with wallet apps via Android intents. No native module substitution needed.
+// The stub is no longer required since the real packages work in all environments.
+console.log('[Metro] Using real MWA packages (pure JavaScript, no native module needed)');
+
 module.exports = config;

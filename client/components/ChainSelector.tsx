@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useLanguage } from '../i18n/LanguageContext';
+import { isChainAvailable, BUILD_CONFIG } from '../config/buildConfig';
 
 type Chain = 'bsc' | 'solana' | 'ethereum';
 type Network = 'mainnet' | 'testnet' | 'devnet';
@@ -85,6 +86,19 @@ const CHAIN_CONFIGS: Record<Chain, { name: string; color: string; disabled: bool
   ethereum: { name: 'Ethereum', color: '#627EEA', disabled: true },
 };
 
+// Get chains filtered by build target
+const getFilteredChains = (): Chain[] => {
+  const allChains: Chain[] = ['bsc', 'solana', 'ethereum'];
+  
+  // For Seeker build, only show Solana
+  if (BUILD_CONFIG.isSeeker) {
+    return ['solana'];
+  }
+  
+  // Default: show all chains
+  return allChains;
+};
+
 const NETWORK_CONFIGS: Record<Network, { name: string; disabled: boolean; disabledReason?: string }> = {
   testnet: { name: 'Testnet', disabled: true, disabledReason: 'Coming soon' },
   mainnet: { name: 'Mainnet', disabled: true, disabledReason: 'Coming soon' },
@@ -130,7 +144,7 @@ export default function ChainSelector({ selectedChain, selectedNetwork, onChainC
 
             {/* Chain Selection */}
             <Text style={styles.sectionTitle}>区块链</Text>
-            {(Object.keys(CHAIN_CONFIGS) as Chain[]).map((chain) => {
+            {getFilteredChains().map((chain) => {
               const config = CHAIN_CONFIGS[chain];
               const isDisabled = config.disabled;
               return (

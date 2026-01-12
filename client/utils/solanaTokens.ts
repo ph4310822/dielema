@@ -10,6 +10,7 @@ export interface TokenBalance {
   balanceRaw: bigint;
   uiAmount: string;
   logoURI?: string;
+  isNative?: boolean;
 }
 
 // Common Solana tokens with their metadata
@@ -173,22 +174,21 @@ export async function getAllTokenBalances(
   const balances: TokenBalance[] = [];
 
   try {
-    // Get SOL balance
+    // Get SOL balance - always include native SOL at the top
     const solBalance = await connection.getBalance(pubkey);
-    if (solBalance > 0) {
-      const solMint = 'So11111111111111111111111111111111111111112';
-      const metadata = getTokenMetadata(solMint, network);
-      balances.push({
-        mint: solMint,
-        symbol: metadata.symbol,
-        name: metadata.name,
-        decimals: metadata.decimals,
-        balance: solBalance / 1e9,
-        balanceRaw: BigInt(solBalance),
-        uiAmount: (solBalance / 1e9).toFixed(metadata.decimals),
-        logoURI: metadata.logoURI,
-      });
-    }
+    const solMint = 'So11111111111111111111111111111111111111112';
+    const solMetadata = getTokenMetadata(solMint, network);
+    balances.push({
+      mint: solMint,
+      symbol: solMetadata.symbol,
+      name: solMetadata.name,
+      decimals: solMetadata.decimals,
+      balance: solBalance / 1e9,
+      balanceRaw: BigInt(solBalance),
+      uiAmount: (solBalance / 1e9).toFixed(4),
+      logoURI: solMetadata.logoURI,
+      isNative: true,
+    });
 
     // Get all token accounts
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {
