@@ -1,4 +1,4 @@
-export type Chain = 'bsc' | 'solana' | 'ethereum' | 'polygon';
+export type Chain = 'bsc' | 'solana' | 'ethereum';
 export type Network = 'mainnet' | 'testnet' | 'devnet';
 
 export interface Deposit {

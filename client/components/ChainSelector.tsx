@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useLanguage } from '../i18n/LanguageContext';
 
-type Chain = 'bsc' | 'solana' | 'ethereum' | 'polygon';
+type Chain = 'bsc' | 'solana' | 'ethereum';
 type Network = 'mainnet' | 'testnet' | 'devnet';
 
 interface ChainSelectorProps {
@@ -13,11 +14,75 @@ interface ChainSelectorProps {
   onNetworkChange?: (network: Network) => void;
 }
 
-const CHAIN_CONFIGS: Record<Chain, { name: string; icon: keyof typeof Ionicons.glyphMap; color: string; disabled: boolean }> = {
-  bsc: { name: 'BNB Chain', icon: 'diamond-outline', color: '#F0B90B', disabled: true },
-  solana: { name: 'Solana', icon: 'radio-button-on-outline', color: '#9945FF', disabled: false },
-  ethereum: { name: 'Ethereum', icon: 'planet-outline', color: '#627EEA', disabled: true },
-  polygon: { name: 'Polygon', icon: 'hexagon-outline', color: '#8247E5', disabled: true },
+// Chain Icon Components
+const SolanaIcon = ({ size = 24, color = '#9945FF' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 128 128">
+    <Defs>
+      <LinearGradient id="solanaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <Stop offset="0%" stopColor="#00FFA3" />
+        <Stop offset="100%" stopColor="#DC1FFF" />
+      </LinearGradient>
+    </Defs>
+    <Path
+      d="M25.38 93.08a4.27 4.27 0 0 1 3-1.25h91.26a2.14 2.14 0 0 1 1.51 3.65l-17.77 17.77a4.27 4.27 0 0 1-3 1.25H9.12a2.14 2.14 0 0 1-1.51-3.65z"
+      fill={color === '#b2bec3' ? color : 'url(#solanaGrad)'}
+    />
+    <Path
+      d="M25.38 14.5a4.39 4.39 0 0 1 3-1.25h91.26a2.14 2.14 0 0 1 1.51 3.65L103.38 34.67a4.27 4.27 0 0 1-3 1.25H9.12a2.14 2.14 0 0 1-1.51-3.65z"
+      fill={color === '#b2bec3' ? color : 'url(#solanaGrad)'}
+    />
+    <Path
+      d="M102.62 53.54a4.27 4.27 0 0 0-3-1.25H8.36a2.14 2.14 0 0 0-1.51 3.65l17.77 17.77a4.27 4.27 0 0 0 3 1.25h91.26a2.14 2.14 0 0 0 1.51-3.65z"
+      fill={color === '#b2bec3' ? color : 'url(#solanaGrad)'}
+    />
+  </Svg>
+);
+
+const BNBIcon = ({ size = 24, color = '#F0B90B' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 126.61 126.61">
+    <G fill={color}>
+      <Path d="M38.73 53.2l24.59-24.58 24.6 24.6 14.3-14.31L63.32 0l-38.9 38.9z" />
+      <Path d="M0 63.31l14.3-14.31 14.31 14.31-14.31 14.3z" />
+      <Path d="M38.73 73.41l24.59 24.59 24.6-24.6 14.31 14.29-.01.01-38.9 38.91-38.9-38.9-.02-.02z" />
+      <Path d="M98 63.31l14.3-14.31 14.31 14.3-14.31 14.32z" />
+      <Path d="M77.83 63.3l-14.51-14.52-10.73 10.73-1.24 1.23-2.54 2.54 14.51 14.53 14.51-14.51z" />
+    </G>
+  </Svg>
+);
+
+const EthereumIcon = ({ size = 24, color = '#627EEA' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 256 417">
+    <G fill="none" fillRule="evenodd">
+      <Path fill={color} d="M127.961 0l-2.795 9.5v275.668l2.795 2.79 127.962-75.638z" opacity={0.8} />
+      <Path fill={color} d="M127.962 0L0 212.32l127.962 75.639V154.158z" />
+      <Path fill={color} d="M127.961 312.187l-1.575 1.92v98.199l1.575 4.6L256 236.587z" opacity={0.8} />
+      <Path fill={color} d="M127.962 416.905v-104.72L0 236.585z" />
+      <Path fill={color} d="M127.961 287.958l127.96-75.637-127.96-58.162z" opacity={0.6} />
+      <Path fill={color} d="M0 212.32l127.96 75.638v-133.8z" opacity={0.8} />
+    </G>
+  </Svg>
+);
+
+// Chain icon renderer
+const ChainIcon = ({ chain, size = 24, disabled = false }: { chain: Chain; size?: number; disabled?: boolean }) => {
+  const disabledColor = '#b2bec3';
+  
+  switch (chain) {
+    case 'solana':
+      return <SolanaIcon size={size} color={disabled ? disabledColor : '#9945FF'} />;
+    case 'bsc':
+      return <BNBIcon size={size} color={disabled ? disabledColor : '#F0B90B'} />;
+    case 'ethereum':
+      return <EthereumIcon size={size} color={disabled ? disabledColor : '#627EEA'} />;
+    default:
+      return <SolanaIcon size={size} color={disabled ? disabledColor : '#9945FF'} />;
+  }
+};
+
+const CHAIN_CONFIGS: Record<Chain, { name: string; color: string; disabled: boolean }> = {
+  bsc: { name: 'BNB Chain', color: '#F0B90B', disabled: true },
+  solana: { name: 'Solana', color: '#9945FF', disabled: false },
+  ethereum: { name: 'Ethereum', color: '#627EEA', disabled: true },
 };
 
 const NETWORK_CONFIGS: Record<Network, { name: string; disabled: boolean; disabledReason?: string }> = {
@@ -39,8 +104,14 @@ export default function ChainSelector({ selectedChain, selectedNetwork, onChainC
         style={styles.selector}
         onPress={() => setModalVisible(true)}
       >
-        <Ionicons name={currentConfig.icon} size={20} color={currentConfig.color} />
-        <View style={styles.networkIndicator} />
+        <ChainIcon chain={selectedChain} size={20} />
+        <Text style={[styles.selectedChainText, { color: currentConfig.color }]}>
+          {currentConfig.name}
+        </Text>
+        <View style={styles.networkBadge}>
+          <Text style={styles.networkBadgeText}>{currentNetworkConfig.name}</Text>
+        </View>
+        <Ionicons name="chevron-down" size={16} color="#636e72" style={styles.chevron} />
       </TouchableOpacity>
 
       <Modal
@@ -77,7 +148,7 @@ export default function ChainSelector({ selectedChain, selectedNetwork, onChainC
                   }}
                   disabled={isDisabled}
                 >
-                  <Ionicons name={config.icon} size={24} color={isDisabled ? '#b2bec3' : config.color} />
+                  <ChainIcon chain={chain} size={24} disabled={isDisabled} />
                   <View style={styles.chainOptionTextContainer}>
                     <Text style={[
                       styles.chainOptionText,
@@ -147,14 +218,35 @@ const styles = StyleSheet.create({
   selector: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  selectedChainText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  networkBadge: {
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  networkBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#43a047',
+  },
+  chevron: {
+    marginLeft: 4,
   },
   indicator: {
     width: 6,

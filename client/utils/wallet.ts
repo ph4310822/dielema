@@ -28,10 +28,6 @@ export const CHAIN_CONFIGS = {
     testnet: { chainId: '0xaa36a7', chainName: 'Sepolia Testnet', rpcUrl: 'https://rpc.sepolia.org' },
     mainnet: { chainId: '0x1', chainName: 'Ethereum Mainnet', rpcUrl: 'https://eth.llamarpc.com' },
   },
-  polygon: {
-    testnet: { chainId: '0x13882', chainName: 'Amoy Testnet', rpcUrl: 'https://rpc-amoy.polygon.technology' },
-    mainnet: { chainId: '0x89', chainName: 'Polygon Mainnet', rpcUrl: 'https://polygon-rpc.com' },
-  },
   solana: {
     devnet: { chainId: 'devnet', chainName: 'Solana Devnet', rpcUrl: clusterApiUrl('devnet') },
     mainnet: { chainId: 'mainnet-beta', chainName: 'Solana Mainnet', rpcUrl: clusterApiUrl('mainnet-beta') },
@@ -51,7 +47,7 @@ export function isSolana(chain: Chain): boolean {
  * Check if the chain is EVM-based
  */
 export function isEVM(chain: Chain): boolean {
-  return chain === 'bsc' || chain === 'ethereum' || chain === 'polygon';
+  return chain === 'bsc' || chain === 'ethereum';
 }
 
 /**
@@ -116,8 +112,6 @@ export function getTokenSymbol(chain: Chain): string {
       return 'BNB';
     case 'ethereum':
       return 'ETH';
-    case 'polygon':
-      return 'MATIC';
     case 'solana':
       return 'SOL';
     default:

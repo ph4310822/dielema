@@ -1,3 +1,6 @@
+// Import polyfills FIRST - before any other imports
+import './shim';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';
