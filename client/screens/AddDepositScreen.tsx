@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   SafeAreaView,
+  Modal,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/native';
@@ -22,8 +24,12 @@ import {
   isSolana,
   isEVM,
   getTokenSymbol,
-  amountToSmallestUnit,
 } from '../utils/wallet';
+import {
+  getAllTokenBalances,
+  TokenBalance,
+  amountToSmallestUnit as solAmountToSmallestUnit,
+} from '../utils/solanaTokens';
 
 type AddDepositScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddDeposit'>;
 
@@ -83,6 +89,37 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
   const [selectedDays, setSelectedDays] = useState(DAY_OPTIONS[1]); // Default: 7 days
   const [customDays, setCustomDays] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Token selection state (for Solana)
+  const [tokens, setTokens] = useState<TokenBalance[]>([]);
+  const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null);
+  const [tokenModalVisible, setTokenModalVisible] = useState(false);
+  const [loadingTokens, setLoadingTokens] = useState(false);
+
+  // Fetch tokens on mount for Solana
+  useEffect(() => {
+    if (isSolana(chain)) {
+      fetchTokens();
+    }
+  }, [chain, network, walletAddress]);
+
+  const fetchTokens = async () => {
+    console.log('[AddDepositScreen] Fetching tokens...');
+    setLoadingTokens(true);
+    try {
+      const tokenBalances = await getAllTokenBalances(walletAddress, network);
+      console.log('[AddDepositScreen] Tokens fetched:', tokenBalances);
+      setTokens(tokenBalances);
+      // Select first token by default (usually SOL)
+      if (tokenBalances.length > 0 && !selectedToken) {
+        setSelectedToken(tokenBalances[0]);
+      }
+    } catch (error) {
+      console.error('[AddDepositScreen] Error fetching tokens:', error);
+    } finally {
+      setLoadingTokens(false);
+    }
+  };
 
   const getTimeoutSeconds = () => {
     const days = selectedDays === null ? parseInt(customDays) : selectedDays.days;
@@ -145,7 +182,13 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
       }
     }
 
-    console.log('[AddDepositScreen] Inputs:', { receiver, amount, selectedDays, customDays });
+    // For Solana, check if token is selected
+    if (isSolana(chain) && !selectedToken) {
+      Alert.alert('Error', 'Please select a token');
+      return;
+    }
+
+    console.log('[AddDepositScreen] Inputs:', { receiver, amount, selectedDays, customDays, selectedToken });
 
     if (!validateInputs()) {
       console.log('[AddDepositScreen] Validation failed');
@@ -156,13 +199,27 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
     setLoading(true);
     try {
       // Build request data based on chain
+      let tokenAddress = '';
+      let amountValue = '';
+
+      if (isEVM(chain)) {
+        tokenAddress = '0x0000000000000000000000000000000000000000'; // Native token
+        amountValue = (parseFloat(amount) * 1e18).toString();
+      } else if (isSolana(chain) && selectedToken) {
+        tokenAddress = selectedToken.mint;
+        amountValue = solAmountToSmallestUnit(parseFloat(amount), selectedToken.decimals).toString();
+      } else {
+        Alert.alert('Error', 'Unsupported chain');
+        return;
+      }
+
       const requestData = {
         chain,
         network,
         depositor: walletAddress,
         receiver,
-        tokenAddress: isEVM(chain) ? '0x0000000000000000000000000000000000000000' : '',
-        amount: amountToSmallestUnit(parseFloat(amount), chain),
+        tokenAddress,
+        amount: amountValue,
         timeoutSeconds: getTimeoutSeconds(),
       };
       console.log('[AddDepositScreen] Request data:', requestData);
@@ -222,8 +279,40 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
             Alert.alert('Error', 'No wallet found. Please install MetaMask.');
           }
         } else if (isSolana(chain)) {
-          // Solana: Backend should return a serialized transaction
-          Alert.alert('Coming Soon', 'Solana deposits will be available soon');
+          // Solana: Sign and send transaction using Phantom
+          try {
+            if (!result.data || !result.data.programId) {
+              throw new Error('Invalid transaction data from backend');
+            }
+
+            const { Transaction, SystemProgram } = await import('@solana/web3.js');
+
+            // Build transaction from backend response
+            const tx = new Transaction();
+            tx.add({
+              keys: result.data.keys.map((k: any) => ({
+                pubkey: new PublicKey(k.pubkey),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable,
+              })),
+              programId: new PublicKey(result.data.programId),
+              data: Buffer.from(result.data.instructionData, 'base64'),
+            });
+
+            // Sign and send via Phantom
+            const provider = (window as any).solana;
+            if (!provider?.signAndSendTransaction) {
+              throw new Error('Phantom wallet not found');
+            }
+
+            const { signature } = await provider.signAndSendTransaction(tx);
+            console.log('[AddDepositScreen] Solana transaction sent:', signature);
+            Alert.alert('Success!', `Deposit created: ${signature}`);
+            navigation.goBack();
+          } catch (txError: any) {
+            console.error('[AddDepositScreen] Solana transaction failed:', txError);
+            Alert.alert('Error', txError?.message || 'Solana transaction failed');
+          }
         } else {
           Alert.alert('Error', 'Unsupported chain');
         }
@@ -254,11 +343,49 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Token Info */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Token</Text>
-          <Text style={styles.infoValue}>Native {getTokenSymbol()}</Text>
-        </View>
+        {/* Token Selection - For Solana */}
+        {isSolana(chain) ? (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Select Token</Text>
+            <TouchableOpacity
+              style={styles.tokenSelector}
+              onPress={() => setTokenModalVisible(true)}
+              disabled={loadingTokens}
+            >
+              {loadingTokens ? (
+                <ActivityIndicator color="#50d56b" />
+              ) : selectedToken ? (
+                <>
+                  {selectedToken.logoURI && (
+                    <Image
+                      source={{ uri: selectedToken.logoURI }}
+                      style={styles.tokenLogo}
+                    />
+                  )}
+                  <View style={styles.tokenInfo}>
+                    <Text style={styles.tokenSymbol}>{selectedToken.symbol}</Text>
+                    <Text style={styles.tokenBalance}>
+                      Balance: {selectedToken.uiAmount}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={20} color="#636e72" />
+                </>
+              ) : (
+                <>
+                  <Ionicons name="wallet-outline" size={20} color="#636e72" />
+                  <Text style={styles.tokenPlaceholder}>Select a token</Text>
+                  <Ionicons name="chevron-down" size={20} color="#636e72" />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* Token Info - For EVM */
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Token</Text>
+            <Text style={styles.infoValue}>Native {getTokenSymbol(chain)}</Text>
+          </View>
+        )}
 
         {/* Receiver Address */}
         <View style={styles.inputGroup}>
@@ -365,9 +492,15 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Summary</Text>
             <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Token:</Text>
+              <Text style={styles.summaryValue}>
+                {isSolana(chain) ? selectedToken?.symbol || 'Select token' : getTokenSymbol(chain)}
+              </Text>
+            </View>
+            <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Amount:</Text>
               <Text style={styles.summaryValue}>
-                {amount} {getTokenSymbol()}
+                {amount}
               </Text>
             </View>
             <View style={styles.summaryRow}>
@@ -401,6 +534,69 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Token Selector Modal - For Solana */}
+      <Modal
+        visible={tokenModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTokenModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setTokenModalVisible(false)}
+        >
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Token</Text>
+              <TouchableOpacity onPress={() => setTokenModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#2d3436" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.tokenList}>
+              {tokens.map((token) => (
+                <TouchableOpacity
+                  key={token.mint}
+                  style={[
+                    styles.tokenItem,
+                    selectedToken?.mint === token.mint && styles.tokenItemSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedToken(token);
+                    setTokenModalVisible(false);
+                  }}
+                >
+                  {token.logoURI && (
+                    <Image source={{ uri: token.logoURI }} style={styles.tokenLogo} />
+                  )}
+                  <View style={styles.tokenItemInfo}>
+                    <Text style={styles.tokenSymbol}>{token.symbol}</Text>
+                    <Text style={styles.tokenName}>{token.name}</Text>
+                  </View>
+                  <View style={styles.tokenBalanceContainer}>
+                    <Text style={styles.tokenBalance}>{token.uiAmount}</Text>
+                  </View>
+                  {selectedToken?.mint === token.mint && (
+                    <Ionicons name="checkmark-circle" size={20} color="#50d56b" />
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              {tokens.length === 0 && !loadingTokens && (
+                <View style={styles.emptyState}>
+                  <Ionicons name="wallet-outline" size={60} color="#b2bec3" />
+                  <Text style={styles.emptyStateText}>No tokens found</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    Make sure you have tokens in your wallet
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -570,5 +766,113 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  // Token selector styles
+  tokenSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dfe6e9',
+  },
+  tokenLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 12,
+  },
+  tokenInfo: {
+    flex: 1,
+  },
+  tokenSymbol: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2d3436',
+  },
+  tokenBalance: {
+    fontSize: 12,
+    color: '#636e72',
+    marginTop: 2,
+  },
+  tokenPlaceholder: {
+    flex: 1,
+    fontSize: 16,
+    color: '#b2bec3',
+    marginLeft: 12,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dfe6e9',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2d3436',
+  },
+  tokenList: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  tokenItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+  },
+  tokenItemSelected: {
+    backgroundColor: '#e8f8ec',
+    borderWidth: 1,
+    borderColor: '#50d56b',
+  },
+  tokenItemInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  tokenName: {
+    fontSize: 12,
+    color: '#636e72',
+    marginTop: 2,
+  },
+  tokenBalanceContainer: {
+    marginRight: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2d3436',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#636e72',
+    textAlign: 'center',
   },
 });

@@ -637,12 +637,18 @@ body {
   box-shadow: var(--shadow);
 }
 
+.lightpaper-header {
+  text-align: center;
+  margin-bottom: 4rem;
+}
+
 .whitepaper-downloads {
   display: flex;
   gap: 1rem;
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 2rem;
+  margin-bottom: 2rem;
 }
 
 .download-link {

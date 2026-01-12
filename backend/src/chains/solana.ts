@@ -4,7 +4,7 @@
  */
 
 import { Connection, PublicKey, TransactionInstruction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 import { IChainService } from './base';
 import {
   ChainType,
@@ -78,6 +78,14 @@ export class SolanaService implements IChainService {
       const [depositPDA] = this.deriveDepositPDA(depositor, depositSeed);
       const [tokenAccountPDA] = this.deriveTokenAccountPDA(depositPDA);
 
+      // Compute user's ATA for the token mint
+      const userATA = await getAssociatedTokenAddress(
+        tokenMintPubkey,
+        depositorPubkey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
       // Build instruction data
       const instructionData = Buffer.alloc(1 + 32 + 8 + 8);
       instructionData.writeUInt8(0, 0); // Instruction type: Deposit = 0
@@ -92,7 +100,7 @@ export class SolanaService implements IChainService {
         keys: [
           { pubkey: depositorPubkey, isSigner: true, isWritable: true },
           { pubkey: depositPDA, isSigner: false, isWritable: true },
-          { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: true }, // Placeholder for user's ATA
+          { pubkey: userATA, isSigner: false, isWritable: true },
           { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
           { pubkey: tokenMintPubkey, isSigner: false, isWritable: false },
           { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -196,6 +204,26 @@ export class SolanaService implements IChainService {
       const [depositPDA] = this.deriveDepositPDA(depositor, depositId);
       const [tokenAccountPDA] = this.deriveTokenAccountPDA(depositPDA);
 
+      // Get the deposit info to find the token mint
+      const depositInfo = await this.connection.getAccountInfo(depositPDA);
+      if (!depositInfo) {
+        return {
+          success: false,
+          chain: ChainType.SOLANA,
+          error: 'Deposit not found',
+        };
+      }
+
+      const tokenMintPubkey = new PublicKey(depositInfo.data.slice(64, 96));
+
+      // Compute user's ATA for the token mint
+      const userATA = await getAssociatedTokenAddress(
+        tokenMintPubkey,
+        depositorPubkey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
       // Build instruction data
       const instructionData = Buffer.alloc(1 + 4 + depositId.length);
       instructionData.writeUInt8(2, 0); // Instruction type: Withdraw = 2
@@ -206,7 +234,7 @@ export class SolanaService implements IChainService {
         keys: [
           { pubkey: depositorPubkey, isSigner: true, isWritable: false },
           { pubkey: depositPDA, isSigner: false, isWritable: true },
-          { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: true }, // Placeholder
+          { pubkey: userATA, isSigner: false, isWritable: true },
           { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
           { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         ],
@@ -254,6 +282,26 @@ export class SolanaService implements IChainService {
       const [depositPDA] = this.deriveDepositPDA(depositor, depositId);
       const [tokenAccountPDA] = this.deriveTokenAccountPDA(depositPDA);
 
+      // Get the deposit info to find the token mint
+      const depositInfo = await this.connection.getAccountInfo(depositPDA);
+      if (!depositInfo) {
+        return {
+          success: false,
+          chain: ChainType.SOLANA,
+          error: 'Deposit not found',
+        };
+      }
+
+      const tokenMintPubkey = new PublicKey(depositInfo.data.slice(64, 96));
+
+      // Compute receiver's ATA for the token mint
+      const receiverATA = await getAssociatedTokenAddress(
+        tokenMintPubkey,
+        receiverPubkey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
       // Build instruction data
       const instructionData = Buffer.alloc(1 + 4 + depositId.length);
       instructionData.writeUInt8(3, 0); // Instruction type: Claim = 3
@@ -264,7 +312,7 @@ export class SolanaService implements IChainService {
         keys: [
           { pubkey: receiverPubkey, isSigner: true, isWritable: false },
           { pubkey: depositPDA, isSigner: false, isWritable: true },
-          { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: true }, // Placeholder
+          { pubkey: receiverATA, isSigner: false, isWritable: true },
           { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
           { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         ],
