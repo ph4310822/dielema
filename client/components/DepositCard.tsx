@@ -7,13 +7,15 @@ export interface Deposit {
   depositIndex: number;
   depositor: string;
   receiver: string;
-  tokenAddress: string;
-  amount: string;
+  tokenAddress?: string;  // EVM
+  tokenMint?: string;     // Solana
+  amount: string | number;
   lastProofTimestamp: number;
   timeoutSeconds: number;
   isClosed: boolean;
   elapsed?: number;
   isExpired?: boolean;
+  depositAddress?: string; // Solana PDA address
 }
 
 interface DepositCardProps {
@@ -24,7 +26,20 @@ interface DepositCardProps {
 
 export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: DepositCardProps) {
   const { t } = useLanguage();
-  const amount = (parseFloat(deposit.amount) / 1e18).toFixed(4);
+  
+  // Handle both EVM (string with 18 decimals) and Solana (number with 9 decimals) amounts
+  const formatAmount = () => {
+    const amountNum = typeof deposit.amount === 'string' ? parseFloat(deposit.amount) : deposit.amount;
+    // If it's a very large number, it's likely in smallest units (lamports/wei)
+    if (amountNum > 1e12) {
+      // Solana uses 9 decimals for native tokens, EVM uses 18
+      const decimals = deposit.tokenMint ? 9 : 18;
+      return (amountNum / Math.pow(10, decimals)).toFixed(4);
+    }
+    // Already in base units
+    return amountNum.toFixed(4);
+  };
+  const amount = formatAmount();
 
   // State for real-time elapsed time
   const [currentElapsed, setCurrentElapsed] = useState<number>(deposit.elapsed || 0);

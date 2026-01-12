@@ -354,3 +354,9 @@ MIT License - see LICENSE file for details
 - [BSC Documentation](https://docs.bnbchain.org/)
 - [Hardhat Documentation](https://hardhat.org/)
 - [Ethers.js Documentation](https://docs.ethers.org/)
+
+
+Solana contract deployed on devnet:
+Program ID: CEcndvG4iioZHttjPkmLiufzdwgQ1Au6N4HJGnmAvem8
+You can view it on Solana Explorer:
+https://explorer.solana.com/address/CEcndvG4iioZHttjPkmLiufzdwgQ1Au6N4HJGnmAvem8?cluster=devnet

@@ -23,6 +23,7 @@ export type RootStackParamList = {
     chain: Chain;
     network: Network;
     walletAddress: string;
+    depositAddress?: string; // Solana PDA address
   };
 };
 

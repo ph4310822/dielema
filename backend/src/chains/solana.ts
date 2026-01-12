@@ -74,9 +74,18 @@ export class SolanaService implements IChainService {
       // Generate deposit seed (using current timestamp)
       const depositSeed = `${Date.now()}`;
 
+      // #region agent log
+      const fs = await import('fs');
+      fs.appendFileSync('/Users/peter/workspace/dielema/.cursor/debug.log', JSON.stringify({location:'solana.ts:createDeposit',message:'Backend deposit seed and PDAs',data:{depositSeed,depositor,receiver,tokenAddress,amount,timeoutSeconds},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})+'\n');
+      // #endregion
+
       // Derive PDAs
       const [depositPDA] = this.deriveDepositPDA(depositor, depositSeed);
       const [tokenAccountPDA] = this.deriveTokenAccountPDA(depositPDA);
+
+      // #region agent log
+      fs.appendFileSync('/Users/peter/workspace/dielema/.cursor/debug.log', JSON.stringify({location:'solana.ts:createDeposit',message:'Derived PDAs',data:{depositPDA:depositPDA.toBase58(),tokenAccountPDA:tokenAccountPDA.toBase58()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})+'\n');
+      // #endregion
 
       // Compute user's ATA for the token mint
       const userATA = await getAssociatedTokenAddress(
@@ -86,15 +95,24 @@ export class SolanaService implements IChainService {
         TOKEN_PROGRAM_ID
       );
 
-      // Build instruction data
-      const instructionData = Buffer.alloc(1 + 32 + 8 + 8);
-      instructionData.writeUInt8(0, 0); // Instruction type: Deposit = 0
-      let offset = 1;
+      // #region agent log
+      fs.appendFileSync('/Users/peter/workspace/dielema/.cursor/debug.log', JSON.stringify({location:'solana.ts:createDeposit',message:'User ATA computed',data:{userATA:userATA.toBase58()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})+'\n');
+      // #endregion
+
+      // Build instruction data using Borsh-compatible format
+      // Borsh enum: 4-byte discriminant (little-endian) + fields
+      const instructionData = Buffer.alloc(4 + 32 + 8 + 8);
+      instructionData.writeUInt32LE(0, 0); // Instruction type: Deposit = 0 (4 bytes for Borsh enum)
+      let offset = 4;
       receiverPubkey.toBuffer().copy(instructionData, offset);
       offset += 32;
       instructionData.writeBigUInt64LE(BigInt(amount), offset);
       offset += 8;
       instructionData.writeBigUInt64LE(BigInt(timeoutSeconds), offset);
+
+      // #region agent log
+      fs.appendFileSync('/Users/peter/workspace/dielema/.cursor/debug.log', JSON.stringify({location:'solana.ts:createDeposit',message:'Instruction data built',data:{instructionDataHex:instructionData.toString('hex'),instructionDataLength:instructionData.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})+'\n');
+      // #endregion
 
       const instruction = new TransactionInstruction({
         keys: [

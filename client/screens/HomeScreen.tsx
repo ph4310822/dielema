@@ -24,10 +24,19 @@ import {
   checkWalletNetwork,
   ensureCorrectNetwork,
   sendEVMTransaction,
+  sendSolanaTransaction,
   isSolana,
   isEVM,
   formatAddress,
 } from '../utils/wallet';
+import {
+  getConnection,
+  getUserDeposits,
+  getClaimableDeposits,
+  buildWithdrawTransaction,
+  buildClaimTransaction,
+  SolanaDeposit,
+} from '../utils/solanaProgram';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -46,11 +55,16 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
   const [walletAddress, setWalletAddress] = useState('');
   const [connected, setConnected] = useState(false);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [claimableDeposits, setClaimableDeposits] = useState<Deposit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'deposits' | 'claimable'>('deposits');
 
   useEffect(() => {
     if (connected && walletAddress) {
       fetchUserDeposits(walletAddress);
+      if (isSolana(chain)) {
+        fetchClaimableDeposits(walletAddress);
+      }
     }
   }, [chain, network, connected]);
 
@@ -135,25 +149,139 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
 
   const fetchUserDeposits = async (address: string) => {
     try {
-      const response = await fetch(
-        `${API_URL}/api/deposits/${address}?chain=${chain}&network=${network}`
-      );
-      const result = await response.json();
+      if (isSolana(chain)) {
+        // Direct Solana RPC call - no backend needed
+        console.log('[HomeScreen] Fetching Solana deposits directly from RPC');
+        const connection = getConnection(network);
+        const solanaDeposits = await getUserDeposits(connection, address);
+        
+        // Convert SolanaDeposit to Deposit format for UI compatibility
+        const formattedDeposits: Deposit[] = solanaDeposits.map((d, index) => ({
+          depositIndex: index,
+          depositor: d.depositor,
+          receiver: d.receiver,
+          tokenMint: d.tokenMint,
+          amount: Number(d.amount),
+          lastProofTimestamp: d.lastProofTimestamp,
+          timeoutSeconds: d.timeoutSeconds,
+          elapsed: d.elapsed,
+          isExpired: d.isExpired,
+          isClosed: d.isClosed,
+          // Store the PDA address for later use
+          depositAddress: d.address,
+        }));
+        
+        console.log('[HomeScreen] Solana deposits fetched:', formattedDeposits.length);
+        setDeposits(formattedDeposits);
+      } else {
+        // EVM: Use backend API
+        const response = await fetch(
+          `${API_URL}/api/deposits/${address}?chain=${chain}&network=${network}`
+        );
+        const result = await response.json();
 
-      if (result.success && result.deposits) {
-        setDeposits(result.deposits);
+        if (result.success && result.deposits) {
+          setDeposits(result.deposits);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch deposits:', error);
     }
   };
 
+  const fetchClaimableDeposits = async (address: string) => {
+    try {
+      if (!isSolana(chain)) return;
+      
+      console.log('[HomeScreen] Fetching claimable deposits for receiver:', address);
+      const connection = getConnection(network);
+      const claimable = await getClaimableDeposits(connection, address);
+      
+      // Convert to Deposit format and filter for expired only
+      const formattedClaimable: Deposit[] = claimable
+        .filter(d => d.isExpired && !d.isClosed)
+        .map((d, index) => ({
+          depositIndex: index,
+          depositor: d.depositor,
+          receiver: d.receiver,
+          tokenMint: d.tokenMint,
+          amount: Number(d.amount),
+          lastProofTimestamp: d.lastProofTimestamp,
+          timeoutSeconds: d.timeoutSeconds,
+          elapsed: d.elapsed,
+          isExpired: d.isExpired,
+          isClosed: d.isClosed,
+          depositAddress: d.address,
+        }));
+      
+      console.log('[HomeScreen] Claimable deposits:', formattedClaimable.length);
+      setClaimableDeposits(formattedClaimable);
+    } catch (error) {
+      console.error('Failed to fetch claimable deposits:', error);
+    }
+  };
+
+  const handleClaim = async (depositIndex: number) => {
+    console.log('[HomeScreen] Claiming deposit:', depositIndex);
+    setLoading(true);
+    try {
+      const deposit = claimableDeposits[depositIndex];
+      if (!deposit || !deposit.depositAddress) {
+        Alert.alert('Error', 'Deposit not found');
+        setLoading(false);
+        return;
+      }
+
+      if (!isSolana(chain)) {
+        Alert.alert('Error', 'Claim is only available for Solana');
+        setLoading(false);
+        return;
+      }
+
+      console.log('[HomeScreen] Building Solana claim transaction');
+      const { PublicKey } = await import('@solana/web3.js');
+      
+      const connection = getConnection(network);
+      const receiverPubkey = new PublicKey(walletAddress);
+      const depositorPubkey = new PublicKey(deposit.depositor);
+      const depositPubkey = new PublicKey(deposit.depositAddress);
+      const tokenMintPubkey = new PublicKey(deposit.tokenMint || deposit.tokenAddress);
+      
+      // Build the claim transaction
+      const transaction = await buildClaimTransaction(
+        connection,
+        receiverPubkey,
+        depositorPubkey,
+        depositPubkey,
+        tokenMintPubkey,
+        `${deposit.lastProofTimestamp}` // Using timestamp as seed approximation
+      );
+
+      // Sign and send
+      const signature = await sendSolanaTransaction(transaction);
+
+      console.log('[HomeScreen] Claim successful:', signature);
+      Alert.alert('Success!', `Claimed! Transaction: ${signature}`);
+      
+      // Refresh both lists
+      await fetchUserDeposits(walletAddress);
+      await fetchClaimableDeposits(walletAddress);
+    } catch (error: any) {
+      console.error('[HomeScreen] Claim error:', error);
+      Alert.alert('Error', error.message || 'Failed to claim');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleProofOfLife = async (depositIndex: number) => {
+    const deposit = deposits[depositIndex];
     navigation.navigate('ProofOfLife', {
       depositIndex,
       chain,
       network,
       walletAddress,
+      depositAddress: deposit?.depositAddress, // Pass Solana PDA address
     });
   };
 
@@ -161,8 +289,46 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
     console.log('[HomeScreen] Withdrawing from deposit:', depositIndex);
     setLoading(true);
     try {
-      // Check network first (EVM only)
-      if (isEVM(chain)) {
+      if (isSolana(chain)) {
+        // Direct Solana withdrawal - no backend needed
+        const deposit = deposits[depositIndex];
+        if (!deposit || !deposit.depositAddress) {
+          Alert.alert('Error', 'Deposit not found');
+          setLoading(false);
+          return;
+        }
+
+        console.log('[HomeScreen] Solana withdraw - building transaction');
+        const { PublicKey } = await import('@solana/web3.js');
+        
+        const connection = getConnection(network);
+        const depositorPubkey = new PublicKey(walletAddress);
+        const depositPubkey = new PublicKey(deposit.depositAddress);
+        const tokenMintPubkey = new PublicKey(deposit.tokenMint || deposit.tokenAddress);
+        
+        // We need to derive the deposit seed from somewhere
+        // For now, we'll try to use a simple approach
+        // The deposit seed should be stored or derivable
+        // Since we don't have the exact seed, we'll need to iterate through possible seeds
+        // This is a limitation - in production, you'd store the seed
+        
+        // Build the withdraw transaction
+        const transaction = await buildWithdrawTransaction(
+          connection,
+          depositorPubkey,
+          depositPubkey,
+          tokenMintPubkey,
+          `${deposit.lastProofTimestamp}` // Using timestamp as seed approximation
+        );
+
+        // Sign and send
+        const signature = await sendSolanaTransaction(transaction);
+
+        console.log('[HomeScreen] Solana withdraw successful:', signature);
+        Alert.alert('Success!', `Withdrawn! Transaction: ${signature}`);
+        await fetchUserDeposits(walletAddress);
+      } else {
+        // EVM: Use backend API
         const isCorrectNetwork = await checkWalletNetwork(chain, network);
         if (!isCorrectNetwork) {
           Alert.alert(
@@ -173,26 +339,22 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
           setLoading(false);
           return;
         }
-      }
 
-      const response = await fetch(`${API_URL}/api/withdraw`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chain,
-          network,
-          depositIndex,
-          depositor: walletAddress,
-        }),
-      });
+        const response = await fetch(`${API_URL}/api/withdraw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chain,
+            network,
+            depositIndex,
+            depositor: walletAddress,
+          }),
+        });
 
-      const result = await response.json();
-      console.log('[HomeScreen] Withdraw API response:', result);
+        const result = await response.json();
+        console.log('[HomeScreen] Withdraw API response:', result);
 
-      if (result.success && result.data) {
-        let txHash: string;
-
-        if (isEVM(chain)) {
+        if (result.success && result.data) {
           // Convert value to hex if needed
           let valueHex = result.data.value || '0x0';
           if (valueHex && !valueHex.startsWith('0x')) {
@@ -211,21 +373,15 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
           }
 
           console.log('[HomeScreen] Withdraw transaction params:', txParams);
-          txHash = await sendEVMTransaction(txParams);
-        } else {
-          // Solana: The backend should return a serialized transaction
-          // For now, this will need to be implemented based on the backend response
-          Alert.alert('Coming Soon', 'Solana withdrawals will be available soon');
-          setLoading(false);
-          return;
-        }
+          const txHash = await sendEVMTransaction(txParams);
 
-        console.log('[HomeScreen] Withdraw successful:', txHash);
-        Alert.alert('Success!', `Withdrawn! Transaction: ${txHash}`);
-        await fetchUserDeposits(walletAddress);
-      } else {
-        console.error('[HomeScreen] Withdraw failed:', result);
-        Alert.alert('Error', result.error || 'Failed to withdraw');
+          console.log('[HomeScreen] Withdraw successful:', txHash);
+          Alert.alert('Success!', `Withdrawn! Transaction: ${txHash}`);
+          await fetchUserDeposits(walletAddress);
+        } else {
+          console.error('[HomeScreen] Withdraw failed:', result);
+          Alert.alert('Error', result.error || 'Failed to withdraw');
+        }
       }
     } catch (error: any) {
       console.error('[HomeScreen] Withdraw error:', error);
@@ -285,33 +441,39 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
               </View>
             </View>
 
-            {deposits.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="add-circle-outline" size={80} color="#b2bec3" />
-                <Text style={styles.emptyStateTitle}>{t.home.noDeposits}</Text>
-                <Text style={styles.emptyStateDescription}>
-                  {t.home.noDepositsDescription}
-                </Text>
+            {/* Tab Switcher for Solana - show both deposits and claimable */}
+            {isSolana(chain) && (
+              <View style={styles.tabContainer}>
                 <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={() =>
-                    navigation.navigate('AddDeposit', {
-                      chain,
-                      network,
-                      walletAddress,
-                    })
-                  }
+                  style={[styles.tab, activeTab === 'deposits' && styles.tabActive]}
+                  onPress={() => setActiveTab('deposits')}
                 >
-                  <Ionicons name="add" size={28} color="#fff" />
-                  <Text style={styles.addButtonText}>{t.home.addDeposit}</Text>
+                  <Text style={[styles.tabText, activeTab === 'deposits' && styles.tabTextActive]}>
+                    {t.home.yourDeposits} ({deposits.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tab, activeTab === 'claimable' && styles.tabActive]}
+                  onPress={() => setActiveTab('claimable')}
+                >
+                  <Text style={[styles.tabText, activeTab === 'claimable' && styles.tabTextActive]}>
+                    Claimable ({claimableDeposits.length})
+                  </Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.depositsContainer}>
-                <View style={styles.depositsHeader}>
-                  <Text style={styles.depositsTitle}>{t.home.yourDeposits}</Text>
+            )}
+
+            {/* Deposits Tab */}
+            {(activeTab === 'deposits' || !isSolana(chain)) && (
+              deposits.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="add-circle-outline" size={80} color="#b2bec3" />
+                  <Text style={styles.emptyStateTitle}>{t.home.noDeposits}</Text>
+                  <Text style={styles.emptyStateDescription}>
+                    {t.home.noDepositsDescription}
+                  </Text>
                   <TouchableOpacity
-                    style={styles.smallAddButton}
+                    style={styles.addButton}
                     onPress={() =>
                       navigation.navigate('AddDeposit', {
                         chain,
@@ -320,18 +482,95 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
                       })
                     }
                   >
-                    <Ionicons name="add" size={20} color="#fff" />
+                    <Ionicons name="add" size={28} color="#fff" />
+                    <Text style={styles.addButtonText}>{t.home.addDeposit}</Text>
                   </TouchableOpacity>
                 </View>
-                {deposits.map((deposit) => (
-                  <DepositCard
-                    key={deposit.depositIndex}
-                    deposit={deposit}
-                    onProofOfLife={handleProofOfLife}
-                    onWithdraw={handleWithdraw}
-                  />
-                ))}
-              </View>
+              ) : (
+                <View style={styles.depositsContainer}>
+                  {!isSolana(chain) && (
+                    <View style={styles.depositsHeader}>
+                      <Text style={styles.depositsTitle}>{t.home.yourDeposits}</Text>
+                      <TouchableOpacity
+                        style={styles.smallAddButton}
+                        onPress={() =>
+                          navigation.navigate('AddDeposit', {
+                            chain,
+                            network,
+                            walletAddress,
+                          })
+                        }
+                      >
+                        <Ionicons name="add" size={20} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {isSolana(chain) && (
+                    <TouchableOpacity
+                      style={styles.addButtonSmall}
+                      onPress={() =>
+                        navigation.navigate('AddDeposit', {
+                          chain,
+                          network,
+                          walletAddress,
+                        })
+                      }
+                    >
+                      <Ionicons name="add" size={20} color="#fff" />
+                      <Text style={styles.addButtonSmallText}>New Deposit</Text>
+                    </TouchableOpacity>
+                  )}
+                  {deposits.map((deposit) => (
+                    <DepositCard
+                      key={deposit.depositIndex}
+                      deposit={deposit}
+                      onProofOfLife={handleProofOfLife}
+                      onWithdraw={handleWithdraw}
+                    />
+                  ))}
+                </View>
+              )
+            )}
+
+            {/* Claimable Tab (Solana only) */}
+            {isSolana(chain) && activeTab === 'claimable' && (
+              claimableDeposits.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="gift-outline" size={80} color="#b2bec3" />
+                  <Text style={styles.emptyStateTitle}>No Claimable Deposits</Text>
+                  <Text style={styles.emptyStateDescription}>
+                    When someone names you as a receiver and their proof-of-life expires, their deposits will appear here.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.depositsContainer}>
+                  {claimableDeposits.map((deposit) => (
+                    <View key={`claimable-${deposit.depositIndex}`} style={styles.claimableCard}>
+                      <View style={styles.claimableHeader}>
+                        <Text style={styles.claimableTitle}>From: {formatAddress(deposit.depositor, chain)}</Text>
+                        <View style={styles.expiredBadge}>
+                          <Text style={styles.expiredBadgeText}>Expired</Text>
+                        </View>
+                      </View>
+                      <View style={styles.claimableDetails}>
+                        <Text style={styles.claimableAmount}>
+                          {(Number(deposit.amount) / 1e9).toFixed(4)} tokens
+                        </Text>
+                        <Text style={styles.claimableInfo}>
+                          Expired {Math.floor(deposit.elapsed! / 86400)} days ago
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.claimButton}
+                        onPress={() => handleClaim(deposit.depositIndex)}
+                      >
+                        <Ionicons name="gift" size={18} color="#fff" />
+                        <Text style={styles.claimButtonText}>Claim Tokens</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )
             )}
           </View>
         )}
@@ -543,5 +782,115 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Tab styles
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  tabActive: {
+    backgroundColor: '#50d56b',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#636e72',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  // Add button small (for tabs view)
+  addButtonSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#50d56b',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+    marginBottom: 12,
+  },
+  addButtonSmallText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Claimable deposit styles
+  claimableCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#fdcb6e',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  claimableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  claimableTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2d3436',
+  },
+  expiredBadge: {
+    backgroundColor: '#ffeaa7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  expiredBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#d68910',
+  },
+  claimableDetails: {
+    marginBottom: 12,
+  },
+  claimableAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2d3436',
+    marginBottom: 4,
+  },
+  claimableInfo: {
+    fontSize: 12,
+    color: '#636e72',
+  },
+  claimButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fdcb6e',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  claimButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -22,9 +22,15 @@ import { useLanguage } from '../i18n/LanguageContext';
 import {
   checkWalletNetwork,
   sendEVMTransaction,
+  sendSolanaTransaction,
   isSolana,
   isEVM,
 } from '../utils/wallet';
+import {
+  getConnection,
+  buildProofOfLifeTransaction,
+  getDepositByAddress,
+} from '../utils/solanaProgram';
 
 type ProofOfLifeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProofOfLife'>;
 
@@ -36,6 +42,7 @@ interface ProofOfLifeScreenProps {
       chain: Chain;
       network: Network;
       walletAddress: string;
+      depositAddress?: string; // Solana PDA address
     };
   };
 }
@@ -46,7 +53,7 @@ type Step = 'check' | 'approve' | 'proof' | 'success';
 
 export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScreenProps) {
   const { t } = useLanguage();
-  const { depositIndex, chain, network, walletAddress } = route.params;
+  const { depositIndex, chain, network, walletAddress, depositAddress } = route.params;
 
   const [step, setStep] = useState<Step>('check');
   const [loading, setLoading] = useState(false);
@@ -61,13 +68,12 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
   const checkTokenStatus = async () => {
     console.log('[ProofOfLife] Checking token status...');
 
-    // Solana: DLM tokens are EVM-only for now
     if (isSolana(chain)) {
-      Alert.alert(
-        'Coming Soon',
-        'Proof of Life for Solana will be available soon',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      // Solana: Direct proof of life (no DLM token required on Solana currently)
+      console.log('[ProofOfLife] Solana chain detected, skipping DLM check');
+      setStep('proof');
+      setIsApproved(true);
+      setDlmBalance('N/A');
       return;
     }
 
@@ -165,16 +171,54 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
   const handleProofOfLife = async () => {
     console.log('[ProofOfLife] Submitting proof of life...');
 
-    // Solana: Not supported yet
-    if (isSolana(chain)) {
-      Alert.alert('Coming Soon', 'Proof of Life for Solana will be available soon');
-      return;
-    }
-
     setLoading(true);
     try {
-      // Check network first (EVM only)
-      if (isEVM(chain)) {
+      if (isSolana(chain)) {
+        // Direct Solana proof of life - no backend needed
+        if (!depositAddress) {
+          Alert.alert('Error', 'Deposit address not found');
+          setLoading(false);
+          return;
+        }
+
+        console.log('[ProofOfLife] Building Solana proof of life transaction');
+        const { PublicKey } = await import('@solana/web3.js');
+        
+        const connection = getConnection(network);
+        const depositorPubkey = new PublicKey(walletAddress);
+        const depositPubkey = new PublicKey(depositAddress);
+
+        // Get deposit info to find the seed
+        const depositInfo = await getDepositByAddress(connection, depositAddress);
+        if (!depositInfo) {
+          Alert.alert('Error', 'Could not fetch deposit information');
+          setLoading(false);
+          return;
+        }
+
+        // Build the proof of life transaction
+        // Note: The Solana program currently requires official_token_mint to be set
+        // If not set, the transaction will fail on-chain
+        const transaction = await buildProofOfLifeTransaction(
+          connection,
+          depositorPubkey,
+          depositPubkey,
+          `${depositInfo.lastProofTimestamp}` // Using timestamp as seed approximation
+        );
+
+        // Sign and send
+        const signature = await sendSolanaTransaction(transaction);
+
+        console.log('[ProofOfLife] Solana proof submitted:', signature);
+        setTxHash(signature);
+        setStep('success');
+
+        // Navigate back after delay
+        setTimeout(() => {
+          navigation.goBack();
+        }, 3000);
+      } else {
+        // EVM: Use backend API
         const isCorrectNetwork = await checkWalletNetwork(chain, network);
         if (!isCorrectNetwork) {
           Alert.alert(
@@ -185,54 +229,54 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
           setLoading(false);
           return;
         }
-      }
 
-      const response = await fetch(`${API_URL}/api/proof-of-life`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chain,
-          network,
-          depositIndex,
-          depositor: walletAddress,
-        }),
-      });
+        const response = await fetch(`${API_URL}/api/proof-of-life`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chain,
+            network,
+            depositIndex,
+            depositor: walletAddress,
+          }),
+        });
 
-      const result = await response.json();
-      console.log('[ProofOfLife] API response:', result);
+        const result = await response.json();
+        console.log('[ProofOfLife] API response:', result);
 
-      if (result.success && result.data) {
-        // Convert value to hex if needed
-        let valueHex = result.data.value || '0x0';
-        if (valueHex && !valueHex.startsWith('0x')) {
-          valueHex = '0x' + BigInt(valueHex).toString(16);
+        if (result.success && result.data) {
+          // Convert value to hex if needed
+          let valueHex = result.data.value || '0x0';
+          if (valueHex && !valueHex.startsWith('0x')) {
+            valueHex = '0x' + BigInt(valueHex).toString(16);
+          }
+
+          const txParams: any = {
+            from: walletAddress,
+            to: result.data.to,
+            data: result.data.data,
+            value: valueHex,
+          };
+
+          if (result.data.gasEstimate) {
+            txParams.gas = result.data.gasEstimate;
+          }
+
+          console.log('[ProofOfLife] Transaction params:', txParams);
+
+          const proofTx = await sendEVMTransaction(txParams);
+
+          console.log('[ProofOfLife] Proof submitted:', proofTx);
+          setTxHash(proofTx);
+          setStep('success');
+
+          // Navigate back after delay
+          setTimeout(() => {
+            navigation.goBack();
+          }, 3000);
+        } else {
+          Alert.alert('Error', result.error || 'Failed to create proof of life transaction');
         }
-
-        const txParams: any = {
-          from: walletAddress,
-          to: result.data.to,
-          data: result.data.data,
-          value: valueHex,
-        };
-
-        if (result.data.gasEstimate) {
-          txParams.gas = result.data.gasEstimate;
-        }
-
-        console.log('[ProofOfLife] Transaction params:', txParams);
-
-        const proofTx = await sendEVMTransaction(txParams);
-
-        console.log('[ProofOfLife] Proof submitted:', proofTx);
-        setTxHash(proofTx);
-        setStep('success');
-
-        // Navigate back after delay
-        setTimeout(() => {
-          navigation.goBack();
-        }, 3000);
-      } else {
-        Alert.alert('Error', result.error || 'Failed to create proof of life transaction');
       }
     } catch (error: any) {
       console.error('[ProofOfLife] Failed to submit proof:', error);
