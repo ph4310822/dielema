@@ -15,7 +15,7 @@ import {
   TransactionResponse,
   DepositInfoResponse,
   DepositAccount,
-} from '../../../shared/types';
+} from '../../shared/types';
 
 // Dielemma ABI - only the functions we need
 const DIELEMMA_ABI = [

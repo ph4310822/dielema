@@ -14,7 +14,6 @@ import {
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddress,
 } from '@solana/spl-token';
-import { ProgramError } from '@solana/web3.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -309,8 +308,10 @@ app.post('/api/claim', async (req: Request, res: Response) => {
 app.get('/api/deposit/:depositor/:depositSeed', async (req: Request, res: Response) => {
   try {
     const { depositor, depositSeed } = req.params;
+    const depositorStr = Array.isArray(depositor) ? depositor[0] : depositor;
+    const depositSeedStr = Array.isArray(depositSeed) ? depositSeed[0] : depositSeed;
 
-    const [depositPDA] = deriveDepositPDA(depositor, depositSeed);
+    const [depositPDA] = deriveDepositPDA(depositorStr, depositSeedStr);
 
     const accountInfo = await connection.getAccountInfo(depositPDA);
 

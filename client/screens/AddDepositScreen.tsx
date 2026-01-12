@@ -15,6 +15,15 @@ import { StackNavigationProp } from '@react-navigation/native';
 
 import { RootStackParamList, Chain, Network } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  ensureCorrectNetwork,
+  checkWalletNetwork,
+  sendEVMTransaction,
+  isSolana,
+  isEVM,
+  getTokenSymbol,
+  amountToSmallestUnit,
+} from '../utils/wallet';
 
 type AddDepositScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddDeposit'>;
 
@@ -45,98 +54,35 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
   const DAY_OPTIONS = getDayOptions(t);
 
-  // Check MetaMask network on mount
+  // Check network on mount (EVM only)
   React.useEffect(() => {
     const checkNetwork = async () => {
-      if (typeof window !== 'undefined' && (window as any).ethereum) {
-        try {
-          const chainId = await (window as any).ethereum.request({ method: 'eth_chainId' });
-          console.log('[AddDepositScreen] Current MetaMask chainId:', chainId);
-
-          // BSC Testnet chainId is 0x61 (97 in decimal)
-          const bscTestnetChainId = '0x61';
-          if (chainId !== bscTestnetChainId) {
-            console.warn('[AddDepositScreen] NOT on BSC Testnet! Current:', chainId, 'Expected:', bscTestnetChainId);
-            Alert.alert(
-              'Wrong Network',
-              'Please switch MetaMask to BSC Testnet (Chain ID: 97)\n\nCurrent Chain ID: ' + chainId,
-              [
-                {
-                  text: 'Cancel',
-                  style: 'cancel',
-                },
-                {
-                  text: 'Switch Network',
-                  onPress: switchToBscTestnet,
-                },
-              ]
-            );
-          } else {
-            console.log('[AddDepositScreen] ✓ Correctly on BSC Testnet');
-          }
-        } catch (error) {
-          console.error('[AddDepositScreen] Failed to check network:', error);
+      if (isEVM(chain)) {
+        const isCorrect = await checkWalletNetwork(chain, network);
+        if (!isCorrect) {
+          Alert.alert(
+            'Wrong Network',
+            `Please switch to ${getTokenSymbol(chain)} ${network}`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Switch Network',
+                onPress: () => ensureCorrectNetwork(chain, network),
+              },
+            ]
+          );
         }
       }
+      // Solana doesn't need network checking
     };
     checkNetwork();
-  }, []);
-
-  const switchToBscTestnet = async () => {
-    try {
-      await (window as any).ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x61' }],
-      });
-      console.log('[AddDepositScreen] Switched to BSC Testnet');
-    } catch (switchError: any) {
-      console.error('[AddDepositScreen] Switch error:', switchError);
-      // This error code indicates that the chain has not been added to MetaMask
-      if (switchError.code === 4902) {
-        try {
-          await (window as any).ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: '0x61',
-              chainName: 'BNB Smart Chain Testnet',
-              nativeCurrency: {
-                name: 'BNB',
-                symbol: 'tBNB',
-                decimals: 18,
-              },
-              rpcUrls: ['https://bsc-testnet-rpc.publicnode.com'],
-              blockExplorerUrls: ['https://testnet.bscscan.com'],
-            }],
-          });
-          console.log('[AddDepositScreen] Added BSC Testnet to MetaMask');
-        } catch (addError) {
-          console.error('[AddDepositScreen] Add network error:', addError);
-          Alert.alert('Error', 'Failed to add BSC Testnet to MetaMask');
-        }
-      }
-    }
-  };
+  }, [chain, network]);
 
   const [receiver, setReceiver] = useState('');
   const [amount, setAmount] = useState('');
   const [selectedDays, setSelectedDays] = useState(DAY_OPTIONS[1]); // Default: 7 days
   const [customDays, setCustomDays] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const getTokenSymbol = () => {
-    switch (chain) {
-      case 'bsc':
-        return 'BNB';
-      case 'ethereum':
-        return 'ETH';
-      case 'polygon':
-        return 'MATIC';
-      case 'solana':
-        return 'SOL';
-      default:
-        return 'BNB';
-    }
-  };
 
   const getTimeoutSeconds = () => {
     const days = selectedDays === null ? parseInt(customDays) : selectedDays.days;
@@ -151,11 +97,23 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
       Alert.alert('Error', 'Please enter receiver address');
       return false;
     }
-    if (!receiver.startsWith('0x')) {
-      console.log('[AddDepositScreen] Validation failed: Invalid receiver address format');
-      Alert.alert('Error', 'Invalid receiver address');
-      return false;
+
+    // Validate address format based on chain
+    if (isEVM(chain)) {
+      if (!receiver.startsWith('0x') || receiver.length !== 42) {
+        console.log('[AddDepositScreen] Validation failed: Invalid EVM address format');
+        Alert.alert('Error', 'Invalid EVM address. Must start with 0x and be 42 characters');
+        return false;
+      }
+    } else if (isSolana(chain)) {
+      // Solana addresses are base58, typically 32-44 characters
+      if (receiver.length < 32 || receiver.length > 44) {
+        console.log('[AddDepositScreen] Validation failed: Invalid Solana address format');
+        Alert.alert('Error', 'Invalid Solana address');
+        return false;
+      }
     }
+
     if (!amount || parseFloat(amount) <= 0) {
       console.log('[AddDepositScreen] Validation failed: Invalid amount');
       Alert.alert('Error', 'Please enter a valid amount');
@@ -174,22 +132,16 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
   const createDeposit = async () => {
     console.log('[AddDepositScreen] createDeposit called');
 
-    // Check network before creating deposit
-    if (typeof window !== 'undefined' && (window as any).ethereum) {
-      try {
-        const chainId = await (window as any).ethereum.request({ method: 'eth_chainId' });
-        console.log('[AddDepositScreen] Current chainId before deposit:', chainId);
-        if (chainId !== '0x61') {
-          console.error('[AddDepositScreen] WRONG NETWORK! Current:', chainId, 'Expected: 0x61 (BSC Testnet)');
-          Alert.alert(
-            'Wrong Network!',
-            `You are on chain ${chainId} but need to be on BSC Testnet (0x61).\n\nPlease switch your OKX Wallet network.`,
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-      } catch (error) {
-        console.error('[AddDepositScreen] Failed to check chainId:', error);
+    // Check network before creating deposit (EVM only)
+    if (isEVM(chain)) {
+      const isCorrectNetwork = await checkWalletNetwork(chain, network);
+      if (!isCorrectNetwork) {
+        Alert.alert(
+          'Wrong Network!',
+          `Please switch to ${getTokenSymbol(chain)} ${network}`,
+          [{ text: 'OK' }]
+        );
+        return;
       }
     }
 
@@ -203,13 +155,14 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
     console.log('[AddDepositScreen] Validation passed, creating deposit...');
     setLoading(true);
     try {
+      // Build request data based on chain
       const requestData = {
         chain,
         network,
         depositor: walletAddress,
         receiver,
-        tokenAddress: '0x0000000000000000000000000000000000000000',
-        amount: (parseFloat(amount) * 1e18).toString(),
+        tokenAddress: isEVM(chain) ? '0x0000000000000000000000000000000000000000' : '',
+        amount: amountToSmallestUnit(parseFloat(amount), chain),
         timeoutSeconds: getTimeoutSeconds(),
       };
       console.log('[AddDepositScreen] Request data:', requestData);
@@ -217,15 +170,7 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
       const response = await fetch(`${API_URL}/api/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chain,
-          network,
-          depositor: walletAddress,
-          receiver,
-          tokenAddress: '0x0000000000000000000000000000000000000000', // Native token
-          amount: (parseFloat(amount) * 1e18).toString(),
-          timeoutSeconds: getTimeoutSeconds(),
-        }),
+        body: JSON.stringify(requestData),
       });
 
       console.log('[AddDepositScreen] Response status:', response.status);
@@ -234,52 +179,53 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
 
       if (result.success) {
         console.log('[AddDepositScreen] Deposit created successfully, data:', result.data);
-        console.log('[AddDepositScreen] Triggering MetaMask transaction...');
 
-        // Directly trigger MetaMask transaction (don't use alert on web)
-        if (result.data && (window as any).ethereum) {
-          try {
-            // Convert decimal value to hex for MetaMask
-            let valueHex = '0x0';
-            if (result.data.value) {
-              // If value is not already hex (doesn't start with 0x), convert it
-              if (!result.data.value.startsWith('0x')) {
-                const valueBigInt = BigInt(result.data.value);
-                valueHex = '0x' + valueBigInt.toString(16);
-                console.log('[AddDepositScreen] Converted value from', result.data.value, 'to', valueHex);
-              } else {
-                valueHex = result.data.value;
+        if (isEVM(chain)) {
+          // EVM: Send transaction via MetaMask
+          if (result.data && (window as any).ethereum) {
+            try {
+              // Convert decimal value to hex for MetaMask
+              let valueHex = '0x0';
+              if (result.data.value) {
+                if (!result.data.value.startsWith('0x')) {
+                  const valueBigInt = BigInt(result.data.value);
+                  valueHex = '0x' + valueBigInt.toString(16);
+                  console.log('[AddDepositScreen] Converted value from', result.data.value, 'to', valueHex);
+                } else {
+                  valueHex = result.data.value;
+                }
               }
+
+              const txParams: any = {
+                from: walletAddress,
+                to: result.data.to,
+                data: result.data.data,
+                value: valueHex,
+              };
+
+              if (result.data.gasEstimate) {
+                txParams.gas = result.data.gasEstimate;
+                console.log('[AddDepositScreen] Using gas estimate:', result.data.gasEstimate);
+              }
+
+              console.log('[AddDepositScreen] Transaction params:', txParams);
+              const txHash = await sendEVMTransaction(txParams);
+              console.log('[AddDepositScreen] Transaction sent:', txHash);
+              Alert.alert('Success!', `Transaction sent: ${txHash}`);
+              navigation.goBack();
+            } catch (txError: any) {
+              console.error('[AddDepositScreen] Transaction failed:', txError);
+              Alert.alert('Error', txError?.message || 'Transaction failed');
             }
-
-            const txParams: any = {
-              from: walletAddress,
-              to: result.data.to,
-              data: result.data.data,
-              value: valueHex,
-            };
-
-            // Add gas estimate if provided
-            if (result.data.gasEstimate) {
-              txParams.gas = result.data.gasEstimate;
-              console.log('[AddDepositScreen] Using gas estimate:', result.data.gasEstimate);
-            }
-
-            console.log('[AddDepositScreen] Transaction params:', txParams);
-            const txHash = await (window as any).ethereum.request({
-              method: 'eth_sendTransaction',
-              params: [txParams],
-            });
-            console.log('[AddDepositScreen] Transaction sent:', txHash);
-            Alert.alert('Success!', `Transaction sent: ${txHash}`);
-            navigation.goBack();
-          } catch (txError: any) {
-            console.error('[AddDepositScreen] Transaction failed:', txError);
-            Alert.alert('Error', txError?.message || 'Transaction failed');
+          } else {
+            console.error('[AddDepositScreen] No ethereum wallet found');
+            Alert.alert('Error', 'No wallet found. Please install MetaMask.');
           }
+        } else if (isSolana(chain)) {
+          // Solana: Backend should return a serialized transaction
+          Alert.alert('Coming Soon', 'Solana deposits will be available soon');
         } else {
-          console.error('[AddDepositScreen] No ethereum wallet found');
-          Alert.alert('Error', 'No wallet found. Please install MetaMask.');
+          Alert.alert('Error', 'Unsupported chain');
         }
       } else {
         console.error('[AddDepositScreen] Deposit creation failed:', result);

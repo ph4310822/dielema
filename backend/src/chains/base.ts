@@ -3,7 +3,7 @@
  * This ensures consistent API across different blockchain networks
  */
 
-import { DepositRequest, ProofOfLifeRequest, WithdrawRequest, ClaimRequest, GetDepositRequest, TransactionResponse, DepositInfoResponse } from '../../../shared/types';
+import { DepositRequest, ProofOfLifeRequest, WithdrawRequest, ClaimRequest, GetDepositRequest, TransactionResponse, DepositInfoResponse } from '../../shared/types';
 
 export interface IChainService {
   /**

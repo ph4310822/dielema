@@ -13,20 +13,20 @@ const LANGUAGE_STORAGE_KEY = '@dielema_language';
 
 // Simple storage helper that works on web
 const storage = {
-  get: async (key: string): Promise<string | null> => {
+  get: (): string | null => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
+        return window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
       }
     } catch (error) {
       console.error('Failed to get from storage:', error);
     }
     return null;
   },
-  set: async (key: string, value: string): Promise<void> => {
+  set: (value: string): void => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(key, value);
+        window.localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
       }
     } catch (error) {
       console.error('Failed to save to storage:', error);
@@ -35,40 +35,41 @@ const storage = {
 };
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>('zh');
-  const [translationsObj, setTranslationsObj] = useState<TranslationKey>(translations.zh);
+  // Load language preference synchronously
+  const savedLanguage = storage.get();
+  const initialLanguage: Language = (savedLanguage === 'en' || savedLanguage === 'zh') ? savedLanguage : 'zh';
 
+  console.log('[LanguageProvider] Initializing with language:', initialLanguage);
+  console.log('[LanguageProvider] Available translations keys:', Object.keys(translations));
+
+  const [language, setLanguageState] = useState<Language>(initialLanguage);
+
+  // Use the translations object directly as the initial state
+  const [, forceUpdate] = useState({});
+
+  const loadLanguage = () => {
+    const saved = storage.get();
+    if (saved === 'en' || saved === 'zh') {
+      setLanguageState(saved);
+    }
+  };
+
+  const setLanguage = (lang: Language) => {
+    storage.set(lang);
+    setLanguageState(lang);
+    // Force re-render
+    forceUpdate({});
+  };
+
+  // Check for saved language on mount
   useEffect(() => {
-    // Load saved language preference
     loadLanguage();
   }, []);
-
-  const loadLanguage = async () => {
-    try {
-      const savedLanguage = await storage.get(LANGUAGE_STORAGE_KEY);
-      if (savedLanguage === 'en' || savedLanguage === 'zh') {
-        setLanguageState(savedLanguage);
-        setTranslationsObj(translations[savedLanguage]);
-      }
-    } catch (error) {
-      console.error('Failed to load language preference:', error);
-    }
-  };
-
-  const setLanguage = async (lang: Language) => {
-    try {
-      await storage.set(LANGUAGE_STORAGE_KEY, lang);
-      setLanguageState(lang);
-      setTranslationsObj(translations[lang]);
-    } catch (error) {
-      console.error('Failed to save language preference:', error);
-    }
-  };
 
   const value: LanguageContextType = {
     language,
     setLanguage,
-    t: translationsObj,
+    t: translations[language],
   };
 
   return (

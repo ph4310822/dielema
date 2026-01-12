@@ -18,6 +18,16 @@ import DepositCard, { Deposit } from '../components/DepositCard';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { RootStackParamList, Chain, Network } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  connectWallet as connectWalletUtil,
+  getWalletAddress,
+  checkWalletNetwork,
+  ensureCorrectNetwork,
+  sendEVMTransaction,
+  isSolana,
+  isEVM,
+  formatAddress,
+} from '../utils/wallet';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -31,7 +41,7 @@ interface HomeScreenProps {
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
-export default function HomeScreen({ navigation, chain, network, onChainChange }: HomeScreenProps) {
+export default function HomeScreen({ navigation, chain, network, onChainChange, onNetworkChange }: HomeScreenProps) {
   const { t } = useLanguage();
   const [walletAddress, setWalletAddress] = useState('');
   const [connected, setConnected] = useState(false);
@@ -55,19 +65,53 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
   );
 
   const connectWallet = async () => {
+    console.log('[HomeScreen] connectWallet called, chain:', chain, 'network:', network);
+
     try {
-      if (typeof window !== 'undefined' && (window as any).ethereum) {
-        const accounts = await (window as any).ethereum.request({
-          method: 'eth_requestAccounts',
-        });
-        setWalletAddress(accounts[0]);
-        setConnected(true);
-        fetchUserDeposits(accounts[0]);
-      } else {
-        Alert.alert(t.common.error, t.wallet.notConnected);
+      // Check if wallet is on correct network first
+      const isCorrectNetwork = await checkWalletNetwork(chain, network);
+      console.log('[HomeScreen] isCorrectNetwork:', isCorrectNetwork);
+
+      if (!isCorrectNetwork && isEVM(chain)) {
+        Alert.alert(
+          t.wallet.wrongNetwork,
+          t.wallet.switchToTestnet,
+          [
+            { text: t.common.cancel, style: 'cancel' },
+            {
+              text: 'Switch',
+              onPress: async () => {
+                try {
+                  await ensureCorrectNetwork(chain, network);
+                  // After switching, connect wallet
+                  const address = await connectWalletUtil(chain);
+                  setWalletAddress(address);
+                  setConnected(true);
+                  fetchUserDeposits(address);
+                } catch (error: any) {
+                  Alert.alert(t.common.error, error.message || 'Failed to switch network');
+                }
+              },
+            },
+          ]
+        );
+        return;
       }
+
+      console.log('[HomeScreen] Calling connectWallet for chain:', chain);
+      const address = await connectWalletUtil(chain);
+      console.log('[HomeScreen] Wallet address received:', address);
+
+      setWalletAddress(address);
+      setConnected(true);
+      fetchUserDeposits(address);
     } catch (error: any) {
-      Alert.alert(t.common.error, error.message || t.wallet.connectError);
+      console.error('[HomeScreen] connectWallet error:', error);
+      const walletName = isSolana(chain) ? 'Phantom' : 'MetaMask';
+      Alert.alert(
+        t.common.error,
+        error.message || `Please install ${walletName} wallet to use this app`
+      );
     }
   };
 
@@ -105,11 +149,10 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
     console.log('[HomeScreen] Withdrawing from deposit:', depositIndex);
     setLoading(true);
     try {
-      // Check network first
-      if (typeof window !== 'undefined' && (window as any).ethereum) {
-        const chainId = await (window as any).ethereum.request({ method: 'eth_chainId' });
-        console.log('[HomeScreen] Current chainId:', chainId);
-        if (chainId !== '0x61') {
+      // Check network first (EVM only)
+      if (isEVM(chain)) {
+        const isCorrectNetwork = await checkWalletNetwork(chain, network);
+        if (!isCorrectNetwork) {
           Alert.alert(
             t.wallet.wrongNetwork,
             t.wallet.switchToTestnet,
@@ -134,30 +177,36 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
       const result = await response.json();
       console.log('[HomeScreen] Withdraw API response:', result);
 
-      if (result.success && result.data && (window as any).ethereum) {
-        // Convert value to hex if needed
-        let valueHex = result.data.value || '0x0';
-        if (valueHex && !valueHex.startsWith('0x')) {
-          valueHex = '0x' + BigInt(valueHex).toString(16);
+      if (result.success && result.data) {
+        let txHash: string;
+
+        if (isEVM(chain)) {
+          // Convert value to hex if needed
+          let valueHex = result.data.value || '0x0';
+          if (valueHex && !valueHex.startsWith('0x')) {
+            valueHex = '0x' + BigInt(valueHex).toString(16);
+          }
+
+          const txParams: any = {
+            from: walletAddress,
+            to: result.data.to,
+            data: result.data.data,
+            value: valueHex,
+          };
+
+          if (result.data.gasEstimate) {
+            txParams.gas = result.data.gasEstimate;
+          }
+
+          console.log('[HomeScreen] Withdraw transaction params:', txParams);
+          txHash = await sendEVMTransaction(txParams);
+        } else {
+          // Solana: The backend should return a serialized transaction
+          // For now, this will need to be implemented based on the backend response
+          Alert.alert('Coming Soon', 'Solana withdrawals will be available soon');
+          setLoading(false);
+          return;
         }
-
-        const txParams: any = {
-          from: walletAddress,
-          to: result.data.to,
-          data: result.data.data,
-          value: valueHex,
-        };
-
-        if (result.data.gasEstimate) {
-          txParams.gas = result.data.gasEstimate;
-        }
-
-        console.log('[HomeScreen] Withdraw transaction params:', txParams);
-
-        const txHash = await (window as any).ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [txParams],
-        });
 
         console.log('[HomeScreen] Withdraw successful:', txHash);
         Alert.alert('Success!', `Withdrawn! Transaction: ${txHash}`);
@@ -216,7 +265,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange }
               <View style={styles.walletInfo}>
                 <Text style={styles.walletLabel}>{t.home.connected}</Text>
                 <Text style={styles.walletAddress}>
-                  {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                  {formatAddress(walletAddress, chain)}
                 </Text>
               </View>
               <View style={styles.balanceIndicator}>

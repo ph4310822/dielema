@@ -17,7 +17,7 @@ import {
   DepositInfoResponse,
   DepositAccount,
   DepositState,
-} from '../../../shared/types';
+} from '../../shared/types';
 
 export class SolanaService implements IChainService {
   private connection: Connection;

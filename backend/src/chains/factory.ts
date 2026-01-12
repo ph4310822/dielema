@@ -3,7 +3,7 @@
  * Creates the appropriate chain service based on the chain type
  */
 
-import { ChainType, CHAIN_CONFIGS, NetworkType } from '../../../shared/types';
+import { ChainType, CHAIN_CONFIGS, NetworkType } from '../../shared/types';
 import { IChainService } from './base';
 import { SolanaService } from './solana';
 import { EvmService } from './evm';

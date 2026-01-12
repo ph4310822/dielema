@@ -1,0 +1,8 @@
+{
+  "name": "@dielemma/shared",
+  "version": "1.0.0",
+  "description": "Shared types for Dielemma project",
+  "main": "types/index.ts",
+  "types": "types/index.ts",
+  "license": "ISC"
+}

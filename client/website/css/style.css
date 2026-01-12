@@ -446,6 +446,37 @@ body {
   box-shadow: var(--shadow);
 }
 
+.whitepaper-downloads {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--white);
+  color: var(--primary);
+  padding: 0.875rem 1.5rem;
+  border-radius: 50px;
+  text-decoration: none;
+  font-weight: 600;
+  border: 2px solid var(--primary);
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow);
+}
+
+.download-link:hover {
+  background: var(--gradient-1);
+  color: var(--white);
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
 .paper-nav {
   display: flex;
   gap: 1rem;

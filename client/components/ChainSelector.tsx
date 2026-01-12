@@ -14,16 +14,16 @@ interface ChainSelectorProps {
 }
 
 const CHAIN_CONFIGS: Record<Chain, { name: string; icon: keyof typeof Ionicons.glyphMap; color: string; disabled: boolean }> = {
-  bsc: { name: 'BNB Chain', icon: 'diamond-outline', color: '#F0B90B', disabled: false },
-  solana: { name: 'Solana', icon: 'radio-button-on-outline', color: '#9945FF', disabled: true },
+  bsc: { name: 'BNB Chain', icon: 'diamond-outline', color: '#F0B90B', disabled: true },
+  solana: { name: 'Solana', icon: 'radio-button-on-outline', color: '#9945FF', disabled: false },
   ethereum: { name: 'Ethereum', icon: 'planet-outline', color: '#627EEA', disabled: true },
   polygon: { name: 'Polygon', icon: 'hexagon-outline', color: '#8247E5', disabled: true },
 };
 
 const NETWORK_CONFIGS: Record<Network, { name: string; disabled: boolean; disabledReason?: string }> = {
-  testnet: { name: 'Testnet', disabled: false },
+  testnet: { name: 'Testnet', disabled: true, disabledReason: 'Coming soon' },
   mainnet: { name: 'Mainnet', disabled: true, disabledReason: 'Coming soon' },
-  devnet: { name: 'Devnet', disabled: true, disabledReason: 'Coming soon' },
+  devnet: { name: 'Devnet', disabled: false },
 };
 
 export default function ChainSelector({ selectedChain, selectedNetwork, onChainChange, onNetworkChange }: ChainSelectorProps) {

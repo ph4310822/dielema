@@ -19,6 +19,12 @@ import {
   approveDLM,
 } from '../utils/dlmToken';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  checkWalletNetwork,
+  sendEVMTransaction,
+  isSolana,
+  isEVM,
+} from '../utils/wallet';
 
 type ProofOfLifeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProofOfLife'>;
 
@@ -54,9 +60,20 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
 
   const checkTokenStatus = async () => {
     console.log('[ProofOfLife] Checking token status...');
+
+    // Solana: DLM tokens are EVM-only for now
+    if (isSolana(chain)) {
+      Alert.alert(
+        'Coming Soon',
+        'Proof of Life for Solana will be available soon',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+
     setLoading(true);
     try {
-      // Check DLM balance
+      // Check DLM balance (EVM only)
       const balanceResult = await getDLMBalance(walletAddress, chain, network);
       setDlmBalance(balanceResult.formatted);
 
@@ -147,8 +164,29 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
 
   const handleProofOfLife = async () => {
     console.log('[ProofOfLife] Submitting proof of life...');
+
+    // Solana: Not supported yet
+    if (isSolana(chain)) {
+      Alert.alert('Coming Soon', 'Proof of Life for Solana will be available soon');
+      return;
+    }
+
     setLoading(true);
     try {
+      // Check network first (EVM only)
+      if (isEVM(chain)) {
+        const isCorrectNetwork = await checkWalletNetwork(chain, network);
+        if (!isCorrectNetwork) {
+          Alert.alert(
+            'Wrong Network',
+            `Please switch to ${chain.toUpperCase()} ${network}`,
+            [{ text: 'OK' }]
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch(`${API_URL}/api/proof-of-life`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,20 +202,6 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
       console.log('[ProofOfLife] API response:', result);
 
       if (result.success && result.data) {
-        // Check network first
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const chainId = await (window as any).ethereum.request({ method: 'eth_chainId' });
-          if (chainId !== '0x61') {
-            Alert.alert(
-              'Wrong Network',
-              'Please switch to BSC Testnet (Chain ID: 97) to submit proof of life',
-              [{ text: 'OK' }]
-            );
-            setLoading(false);
-            return;
-          }
-        }
-
         // Convert value to hex if needed
         let valueHex = result.data.value || '0x0';
         if (valueHex && !valueHex.startsWith('0x')) {
@@ -197,10 +221,7 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
 
         console.log('[ProofOfLife] Transaction params:', txParams);
 
-        const proofTx = await (window as any).ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [txParams],
-        });
+        const proofTx = await sendEVMTransaction(txParams);
 
         console.log('[ProofOfLife] Proof submitted:', proofTx);
         setTxHash(proofTx);

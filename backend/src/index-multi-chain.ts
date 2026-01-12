@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
+console.log('[DEBUG] Loading Dielemma backend...');
+
 // Import shared types and chain services
 import {
   ChainType,
@@ -12,13 +14,17 @@ import {
   ClaimRequest,
   GetDepositRequest,
   CHAIN_CONFIGS,
-} from '../../shared/types';
+} from '../shared/types';
 import { ChainServiceFactory } from './chains/factory';
+
+console.log('[DEBUG] Types and factory imported successfully');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+console.log('[DEBUG] Express app created, PORT:', PORT);
 
 // Default chain configuration (can be overridden per request)
 const DEFAULT_CHAIN: ChainType = (process.env.DEFAULT_CHAIN as ChainType) || ChainType.SOLANA;
@@ -32,8 +38,16 @@ interface ChainRequest extends Request {
   };
 }
 
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : ['http://localhost:8082'];
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: corsOrigins,
+  credentials: true
+}));
 app.use(express.json());
 
 // Middleware to validate chain parameter
@@ -260,17 +274,10 @@ app.get('/api/deposits/:user', validateChain, async (req: ChainRequest, res: Res
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════════════════════════════╗
-║                    Dielemma Backend Server                    ║
-╠════════════════════════════════════════════════════════════════╣
-║  Port:              ${PORT.toString().padEnd(44)}║
-║  Default Chain:     ${(DEFAULT_CHAIN || 'solana').padEnd(44)}║
-║  Default Network:   ${(DEFAULT_NETWORK || 'testnet').padEnd(44)}║
-║  Supported Chains:  ${ChainServiceFactory.getSupportedChains().join(', ').padEnd(44)}║
-╚════════════════════════════════════════════════════════════════╝
-  `);
+  console.log('Dielemma Backend Server Starting...');
+  console.log(`Port: ${PORT}`);
+  console.log(`Default Chain: ${DEFAULT_CHAIN || 'solana'}`);
+  console.log(`Default Network: ${DEFAULT_NETWORK || 'testnet'}`);
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
-  console.log(`Supported chains: http://localhost:${PORT}/api/chains`);
 });

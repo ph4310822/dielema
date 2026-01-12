@@ -1,13 +1,16 @@
 {
   "name": "dielemma-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Dielemma backend API - Multi-chain support (Solana, BSC, Ethereum, Polygon, etc.)",
-  "main": "dist/index.js",
+  "main": "dist/index-multi-chain.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node src/index.ts",
+    "dev": "nodemon --exec ts-node src/index-multi-chain.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/index-multi-chain.js",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [
     "solana",
