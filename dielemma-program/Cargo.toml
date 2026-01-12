@@ -3,6 +3,9 @@ name = "dielemma-program"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+overflow-checks = true
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
@@ -14,11 +17,14 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
-solana-program = "1.18"
+solana-program = "=1.17.31"
 borsh = "0.10"
 borsh-derive = "0.10"
-spl-token = { version = "4.0", features = ["no-entrypoint"] }
+spl-token = { version = "3.5", features = ["no-entrypoint"] }
+# Force older blake3 compatible with platform-tools rustc 1.75
+blake3 = { version = ">=1.5.0, <1.6.0", features = ["digest"] }
 
-[dev-dependencies]
-solana-program-test = "1.18"
-solana-sdk = "1.18"
+# Dev dependencies removed for build compatibility
+# [dev-dependencies]
+# solana-program-test = "=1.17.31"
+# solana-sdk = "=1.17.31"

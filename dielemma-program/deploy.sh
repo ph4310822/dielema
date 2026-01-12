@@ -66,7 +66,7 @@ else
     echo "Please install one of the following:"
     echo ""
     echo "Option 1: Install Solana build tools"
-    echo "  cargo install solana-build-bpf"
+    echo "  Add to PATH: export PATH=\"\$HOME/.local/share/solana/install/active_release/bin:\$PATH\""
     echo ""
     echo "Option 2: Install Anchor"
     echo "  cargo install --git https://github.com/coral-xyz/anchor avm --locked --force"

@@ -42,6 +42,8 @@ pub enum DielemmaInstruction {
     /// 6. [] System program
     /// 7. [] Rent sysvar
     Deposit {
+        /// Unique deposit seed (client-generated)
+        deposit_seed: String,
         /// Receiver who can claim if proof-of-life expires
         receiver: Pubkey,
         /// Amount of tokens to deposit (in smallest unit)
@@ -152,10 +154,11 @@ pub fn process_instruction(
 
     match instruction {
         DielemmaInstruction::Deposit {
+            deposit_seed,
             receiver,
             amount,
             timeout_seconds,
-        } => process_deposit(program_id, accounts, receiver, amount, timeout_seconds),
+        } => process_deposit(program_id, accounts, deposit_seed, receiver, amount, timeout_seconds),
         DielemmaInstruction::ProofOfLife { deposit_seed } => {
             process_proof_of_life(program_id, accounts, deposit_seed)
         }
@@ -176,6 +179,7 @@ pub fn process_instruction(
 fn process_deposit(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    deposit_seed: String,
     receiver: Pubkey,
     amount: u64,
     timeout_seconds: u64,
@@ -203,11 +207,10 @@ fn process_deposit(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // Generate unique deposit seed
+    // Get clock for timestamp
     let clock = Clock::get()?;
-    let deposit_seed = format!("{}-{}", depositor.key, clock.unix_timestamp);
 
-    // Derive PDA for deposit account
+    // Derive PDA for deposit account (using client-provided seed)
     let (deposit_pda, bump) = Pubkey::find_program_address(
         &[DEPOSIT_SEED_PREFIX, depositor.key.as_ref(), deposit_seed.as_bytes()],
         program_id,
@@ -716,6 +719,7 @@ mod tests {
     fn test_instruction_packing() {
         let receiver = Pubkey::new_unique();
         let instruction = DielemmaInstruction::Deposit {
+            deposit_seed: "test-seed-123".to_string(),
             receiver,
             amount: 1000,
             timeout_seconds: 86400,
