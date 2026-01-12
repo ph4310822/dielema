@@ -7,6 +7,9 @@ import { BUILD_CONFIG } from '../config/buildConfig';
 let mwaModule: any = null;
 try {
   mwaModule = require('@solana-mobile/mobile-wallet-adapter-protocol-web3js');
+  // #region agent log
+  console.log('[MobileWallet] DEBUG: MWA module loaded, keys:', mwaModule ? Object.keys(mwaModule) : null, '__isMwaStub:', mwaModule?.__isMwaStub);
+  // #endregion
 } catch (e) {
   console.log('[MobileWallet] MWA module not available');
 }
@@ -125,16 +128,64 @@ export async function connectMobileWallet(): Promise<string> {
     );
   }
   
-  const authResult = await transact(async (wallet: any) => {
-    const result = await wallet.authorize({
-      cluster: 'devnet',
-      identity: APP_IDENTITY,
-    });
-    return result;
-  });
+  // #region agent log
+  console.log('[MobileWallet] DEBUG: Before transact(), transact type:', typeof transact, 'mwaModule keys:', mwaModule ? Object.keys(mwaModule) : null);
+  // #endregion
   
-  const publicKeyBytes = authResult.accounts[0].publicKey;
-  authorizedPublicKey = new PublicKey(publicKeyBytes);
+  let authResult: any;
+  try {
+    authResult = await transact(async (wallet: any) => {
+      // #region agent log
+      console.log('[MobileWallet] DEBUG: Inside transact callback, wallet type:', typeof wallet, 'wallet keys:', wallet ? Object.keys(wallet) : null);
+      // #endregion
+      
+      const result = await wallet.authorize({
+        cluster: 'devnet',
+        identity: APP_IDENTITY,
+      });
+      
+      // #region agent log
+      console.log('[MobileWallet] DEBUG: After authorize, result keys:', result ? Object.keys(result) : null, 'hasAccounts:', !!result?.accounts);
+      // #endregion
+      
+      return result;
+    });
+  } catch (transactError: any) {
+    // #region agent log
+    console.log('[MobileWallet] DEBUG: transact() error:', transactError?.message, 'stack:', transactError?.stack?.substring?.(0, 500));
+    // #endregion
+    throw transactError;
+  }
+  
+  // #region agent log
+  console.log('[MobileWallet] DEBUG: authResult received, keys:', authResult ? Object.keys(authResult) : null, 'accounts:', authResult?.accounts?.length);
+  console.log('[MobileWallet] DEBUG: first account:', authResult?.accounts?.[0]);
+  console.log('[MobileWallet] DEBUG: first account keys:', authResult?.accounts?.[0] ? Object.keys(authResult.accounts[0]) : null);
+  // #endregion
+  
+  // MWA returns 'address' (base64 encoded), not 'publicKey'
+  const addressBase64 = authResult.accounts[0].address;
+  // #region agent log
+  console.log('[MobileWallet] DEBUG: addressBase64:', addressBase64, 'type:', typeof addressBase64);
+  // #endregion
+  
+  // Decode base64 to bytes
+  const publicKeyBytes = Uint8Array.from(atob(addressBase64), c => c.charCodeAt(0));
+  // #region agent log
+  console.log('[MobileWallet] DEBUG: publicKeyBytes decoded, length:', publicKeyBytes.length, 'isUint8Array:', publicKeyBytes instanceof Uint8Array);
+  // #endregion
+  
+  try {
+    authorizedPublicKey = new PublicKey(publicKeyBytes);
+    // #region agent log
+    console.log('[MobileWallet] DEBUG: PublicKey created successfully:', authorizedPublicKey?.toBase58());
+    // #endregion
+  } catch (pkError: any) {
+    // #region agent log
+    console.log('[MobileWallet] DEBUG: PublicKey constructor error:', pkError?.message, 'stack:', pkError?.stack?.substring?.(0, 300));
+    // #endregion
+    throw pkError;
+  }
   
   const address = authorizedPublicKey.toBase58();
   console.log('[MobileWallet] Connected:', address);

@@ -99,14 +99,26 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
       }
 
       console.log('[HomeScreen] Calling connectWallet for chain:', chain);
+      // #region agent log
+      fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.tsx:102',message:'Before connectWalletUtil',data:{chain},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       const address = await connectWalletUtil(chain);
+      // #region agent log
+      fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.tsx:107',message:'Address received from connectWalletUtil',data:{address,addressType:typeof address,addressLength:address?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       console.log('[HomeScreen] Wallet address received:', address);
 
       setWalletAddress(address);
       setConnected(true);
+      // #region agent log
+      fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.tsx:115',message:'Before fetchUserDeposits',data:{address},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       fetchUserDeposits(address);
     } catch (error: any) {
       console.error('[HomeScreen] connectWallet error:', error);
+      // #region agent log
+      fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.tsx:119',message:'connectWallet error caught',data:{errorMessage:error?.message,errorName:error?.name,errorStack:error?.stack?.substring?.(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       const walletName = isSolana(chain) ? 'Phantom' : 'MetaMask';
       Alert.alert(
         t.common.error,

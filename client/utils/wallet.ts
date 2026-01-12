@@ -104,6 +104,9 @@ export function isValidAddress(address: string, chain: Chain): boolean {
  * Format address for display
  */
 export function formatAddress(address: string, chain: Chain): string {
+  // #region agent log
+  fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'wallet.ts:108',message:'formatAddress called',data:{address,addressType:typeof address,chain},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
   if (isEVM(chain)) {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   } else if (isSolana(chain)) {
@@ -334,8 +337,16 @@ export async function connectSolanaWallet(): Promise<string> {
   const response = await provider.connect();
   console.log('[wallet] Connect response:', response);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'wallet.ts:337',message:'Phantom connect response',data:{response:JSON.stringify(response),hasPublicKey:!!response?.publicKey,publicKeyType:typeof response?.publicKey,publicKeyToString:response?.publicKey?.toString?.(),hasBn:!!(response?.publicKey as any)?._bn},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+
   const publicKey = response.publicKey.toString();
   console.log('[wallet] Public key:', publicKey);
+
+  // #region agent log
+  fetch('http://127.0.0.1:7247/ingest/41be2666-eece-4516-8405-3624718a9213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'wallet.ts:345',message:'PublicKey extracted',data:{publicKey,publicKeyLength:publicKey?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
 
   return publicKey;
 }
