@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, StatusBar } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 interface MobileContainerProps {
   children: React.ReactNode;
@@ -18,10 +19,21 @@ export default function MobileContainer({ children }: MobileContainerProps) {
     );
   }
 
-  return <>{children}</>;
+  // On native, use SafeAreaView to handle status bar and system UI insets
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        {children}
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   desktopWrapper: {
     flex: 1,
     backgroundColor: '#f0f0f0',
