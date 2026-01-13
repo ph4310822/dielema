@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title Dielemma - Proof of Life Smart Contract (EVM Compatible)
+ * @title Dielemma - Don't take your keys to the grave. (EVM Compatible)
  * @dev Works on BSC, Ethereum, Polygon, Arbitrum, Base, and other EVM chains
  *
  * Users deposit tokens and must periodically prove they are alive.

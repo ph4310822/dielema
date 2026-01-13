@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Image,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp, useFocusEffect } from '@react-navigation/native';
@@ -528,8 +529,9 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
         {!connected ? (
           <View style={styles.welcomeContainer}>
             <View style={styles.iconContainer}>
-              <Image source={require('../assets/dilema-logo.png')} style={styles.logo} />
+              <Image source={require('../assets/icon.png')} style={styles.logo} />
             </View>
+            <Text style={styles.projectName}>Dielema</Text>
             <Text style={styles.welcomeTitle}>{t.home.welcomeTitle}</Text>
             <Text style={styles.welcomeSubtitle}>
               {t.home.welcomeSubtitle}
@@ -537,6 +539,25 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
             <Text style={styles.welcomeDescription}>
               {t.home.welcomeDescription}
             </Text>
+
+            {/* Social Links */}
+            <View style={styles.socialLinksContainer}>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => Linking.openURL('https://x.com/dielema_icu')}
+              >
+                <Ionicons name="logo-twitter" size={24} color="#1DA1F2" />
+                <Text style={styles.socialButtonText}>@dielema_icu</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => Linking.openURL('https://t.me/dielema_icu')}
+              >
+                <Ionicons name="paper-plane-outline" size={24} color="#0088cc" />
+                <Text style={styles.socialButtonText}>@dielema_icu</Text>
+              </TouchableOpacity>
+            </View>
+
             <TouchableOpacity style={styles.connectButton} onPress={connectWallet}>
               <Text style={styles.connectButtonText}>{t.home.connectWallet}</Text>
             </TouchableOpacity>
@@ -571,7 +592,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
                   onPress={() => setActiveTab('claimable')}
                 >
                   <Text style={[styles.tabText, activeTab === 'claimable' && styles.tabTextActive]}>
-                    Claimable ({claimableDeposits.length})
+                    {t.home.claimable} ({claimableDeposits.length})
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -749,6 +770,36 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     resizeMode: 'contain',
+  },
+  projectName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#50d56b',
+    marginBottom: 16,
+  },
+  socialLinksContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 32,
+  },
+  socialButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  socialButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2d3436',
   },
   welcomeTitle: {
     fontSize: 28,

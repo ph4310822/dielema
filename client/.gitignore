@@ -33,9 +33,14 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Keystore files (DO NOT COMMIT)
+android/keystore.properties
+android/app/keys/
+*.keystore
+
+# Keystore credentials backup (DO NOT COMMIT)
+ANDROID_KEYSTORE_CREDENTIALS.txt
+
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android

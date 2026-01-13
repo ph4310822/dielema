@@ -52,3 +52,6 @@ target/
 .cache
 temp
 tmp
+
+# Android keystore credentials (DO NOT COMMIT)
+ANDROID_KEYSTORE_CREDENTIALS.txt

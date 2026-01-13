@@ -1,0 +1,7 @@
+[build]
+target = "bfce3487237a373655789b3357451d5b119d80e9::BpfTarget"
+target-dir = "target"
+
+[env]
+# Pass optimization flags to the LLVM linker
+RUSTFLAGS = "-C link-arg=-s -C link-arg=-z -C link-arg=now"

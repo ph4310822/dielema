@@ -145,6 +145,33 @@ cd client
 npm run dev
 ```
 
+### 6. Build Android App
+
+To build a signed release APK for Android:
+
+```bash
+cd client/android
+./gradlew assembleRelease
+```
+
+The signed APK will be generated at:
+```
+client/android/app/build/outputs/apk/release/app-release.apk
+```
+
+**Note:** The app is automatically signed using the keystore configured in `android/keystore.properties`. Make sure this file exists and contains valid credentials before building.
+
+**Verify the signature:**
+```bash
+# On macOS with Android SDK
+$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+```
+
+**Install on device:**
+```bash
+adb install app/build/outputs/apk/release/app-release.apk
+```
+
 ## API Endpoints
 
 The multi-chain backend supports the following endpoints:

@@ -10,7 +10,7 @@ export const translations = {
     },
     home: {
       welcomeTitle: 'Welcome to Dielemma',
-      welcomeSubtitle: 'Proof of Life Smart Contract',
+      welcomeSubtitle: 'Don\'t take your keys to the grave.',
       welcomeDescription: 'Connect your wallet to create time-locked deposits that require periodic proof of life.',
       connectWallet: 'Connect Wallet',
       connected: 'Connected',
@@ -18,6 +18,7 @@ export const translations = {
       noDepositsDescription: 'Create your first time-locked deposit',
       addDeposit: 'Add Deposit',
       yourDeposits: 'Your Deposits',
+      claimable: 'Claimable',
       disconnect: 'Disconnect',
     },
     chainSelector: {
@@ -33,6 +34,9 @@ export const translations = {
       active: 'Active',
       proofOfLife: 'Proof of Life',
       withdraw: 'Withdraw',
+      amount: 'BNB',
+      elapsed: 'elapsed',
+      timeout: 'timeout',
     },
     addDeposit: {
       title: 'Create New Deposit',
@@ -84,11 +88,6 @@ export const translations = {
       wrongNetwork: 'Wrong Network',
       switchToTestnet: 'Please switch to BSC Testnet (Chain ID: 97)',
     },
-    depositCard: {
-      amount: 'BNB',
-      elapsed: 'elapsed',
-      timeout: 'timeout',
-    },
   },
   zh: {
     common: {
@@ -109,6 +108,7 @@ export const translations = {
       noDepositsDescription: '创建您的第一笔定期存款',
       addDeposit: '添加存款',
       yourDeposits: '您的存款',
+      claimable: '可提取',
       disconnect: '断开连接',
     },
     chainSelector: {
@@ -124,6 +124,9 @@ export const translations = {
       active: '活跃',
       proofOfLife: '生命证明',
       withdraw: '提取',
+      amount: 'BNB',
+      elapsed: '已过时间',
+      timeout: '超时时间',
     },
     addDeposit: {
       title: '创建新存款',
@@ -174,11 +177,6 @@ export const translations = {
       connectError: '连接钱包失败',
       wrongNetwork: '网络错误',
       switchToTestnet: '请切换到 BSC 测试网（链 ID：97）',
-    },
-    depositCard: {
-      amount: 'BNB',
-      elapsed: '已过时间',
-      timeout: '超时时间',
     },
   },
 };

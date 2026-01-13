@@ -15,10 +15,10 @@ use solana_program::{
     pubkey::Pubkey,
     system_instruction,
     system_program,
-    sysvar::{clock::Clock, rent::Rent, Sysvar, SysvarId},
+    sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
 use spl_token::{
-    instruction::{initialize_account, transfer, burn, close_account},
+    instruction::{initialize_account, transfer, burn},
     state::Account as TokenAccount,
 };
 

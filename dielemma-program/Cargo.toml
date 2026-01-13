@@ -5,6 +5,11 @@ edition = "2021"
 
 [profile.release]
 overflow-checks = true
+opt-level = "z"     # Optimize for size
+lto = true          # Link-time optimization
+codegen-units = 1   # Better optimization with single codegen unit
+strip = true        # Remove debug symbols
+panic = "abort"     # Reduce binary size by removing panic unwinding code
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -19,11 +24,11 @@ skip-no-realloc = []
 
 [dependencies]
 solana-program = "=1.17.31"
-borsh = "0.10"
+borsh = { version = "0.10", default-features = false, features = ["std"] }
 borsh-derive = "0.10"
 spl-token = { version = "3.5", features = ["no-entrypoint"] }
 # Force older blake3 compatible with platform-tools rustc 1.75
-blake3 = { version = ">=1.5.0, <1.6.0", features = ["digest"] }
+blake3 = { version = ">=1.5.0, <1.6.0", default-features = false, features = ["digest"] }
 
 # Dev dependencies removed for build compatibility
 # [dev-dependencies]
