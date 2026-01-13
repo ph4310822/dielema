@@ -54,7 +54,7 @@ exports.CHAIN_CONFIGS = {
             devnet: 'https://api.devnet.solana.com',
             local: 'http://localhost:8899',
         },
-        programId: '45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj',
+        programId: '4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra',
         nativeCurrency: {
             name: 'Solana',
             symbol: 'SOL',

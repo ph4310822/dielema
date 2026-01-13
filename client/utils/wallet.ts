@@ -423,7 +423,7 @@ export async function sendSolanaTransaction(transaction: Transaction): Promise<s
     console.log('[wallet] Sending transaction via Mobile Wallet Adapter');
     return signAndSendMobileTransaction(transaction);
   }
-  
+
   // Use browser extension (Phantom) on web/iOS
   if (typeof window === 'undefined') {
     throw new Error('Window object not available');
@@ -433,11 +433,95 @@ export async function sendSolanaTransaction(transaction: Transaction): Promise<s
 
   const connection = new Connection(getRpcUrl('solana', 'devnet'), 'confirmed');
 
-  // Sign and send transaction
-  const { signature } = await provider.signAndSendTransaction(transaction);
+  console.log('[wallet] Sending transaction to Phantom...');
 
-  // Wait for confirmation
-  await connection.confirmTransaction(signature, 'confirmed');
+  // Get recent blockhash BEFORE signing (for confirmation timeout)
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = provider.publicKey;
+
+  // Log transaction info (basic validation)
+  console.log('[wallet] Transaction instructions:', transaction.instructions.length);
+  console.log('[wallet] Fee payer:', transaction.feePayer?.toBase58() || 'not set');
+  console.log('[wallet] Blockhash:', transaction.recentBlockhash.slice(0, 8) + '...');
+
+  // Step 1: Sign the transaction (without sending)
+  console.log('[wallet] Requesting signature from Phantom...');
+  const signedTransaction = await provider.signTransaction(transaction);
+  console.log('[wallet] Transaction signed successfully');
+
+  // Step 2: Simulate the transaction to catch errors before broadcasting
+  console.log('[wallet] Simulating transaction to check for errors...');
+  try {
+    // Simulate using the original unsigned transaction - this validates the instruction logic
+    // The simulation will fail if there are account data issues (like old vs new program format)
+    const simulation = await connection.simulateTransaction(transaction);
+
+    if (simulation.value.err) {
+      console.error('[wallet] ❌ Simulation FAILED! Transaction would fail if submitted.');
+      console.error('[wallet] Error:', JSON.stringify(simulation.value.err, null, 2));
+      console.error('[wallet] Logs:');
+      simulation.value.logs?.forEach((log: string) => console.error('  ', log));
+
+      // Provide helpful error message
+      throw new Error(
+        `Transaction simulation failed: ${JSON.stringify(simulation.value.err)}\n\n` +
+        `This usually means:\n` +
+        `• The deposit was created with an OLD program version and needs to be withdrawn & recreated\n` +
+        `• The account data is corrupted or invalid\n` +
+        `• The instruction parameters are incorrect`
+      );
+    }
+
+    console.log('[wallet] ✅ Simulation successful!');
+    console.log('[wallet] Units consumed:', simulation.value.unitsConsumed);
+  } catch (simError: any) {
+    console.error('[wallet] ❌ Simulation error:', simError.message);
+    throw new Error(`Transaction validation failed: ${simError.message}`);
+  }
+
+  // Step 3: Send the signed transaction to the network
+  console.log('[wallet] Broadcasting signed transaction to network...');
+  const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+
+  console.log('[wallet] Transaction submitted:', signature);
+  console.log('[wallet] Waiting for confirmation...');
+
+  // Wait for confirmation with timeout
+  try {
+    // Use the same blockhash we set before signing for confirmation
+    const confirmation = await connection.confirmTransaction(
+      {
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      },
+      'confirmed'
+    );
+
+    console.log('[wallet] Confirmation result:', confirmation.value);
+
+    if (confirmation.value.err) {
+      console.error('[wallet] Transaction failed:', confirmation.value.err);
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+
+    console.log('[wallet] Transaction confirmed successfully');
+  } catch (error: any) {
+    console.error('[wallet] Confirmation error:', error);
+
+    // Check if transaction actually succeeded despite confirmation error
+    const status = await connection.getSignatureStatus(signature);
+    if (status.value && status.value.confirmationStatus) {
+      console.log('[wallet] Transaction status from RPC:', status.value.confirmationStatus);
+      if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
+        console.log('[wallet] Transaction was confirmed despite error');
+        return signature;
+      }
+    }
+
+    throw error;
+  }
 
   return signature;
 }

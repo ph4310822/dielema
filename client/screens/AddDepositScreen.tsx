@@ -248,15 +248,75 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
       timeoutBigInt
     );
 
+    // Get blockhash for confirmation
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
     // Sign and send via Phantom
     const provider = (window as any).solana;
-    if (!provider?.signAndSendTransaction) {
+    if (!provider) {
       throw new Error('Phantom wallet not found. Please install Phantom.');
     }
 
-    const { signature } = await provider.signAndSendTransaction(transaction);
+    // Log available methods for debugging
+    console.log('[AddDepositScreen] Available provider methods:', Object.keys(provider));
 
-    console.log('[AddDepositScreen] Solana transaction sent:', signature);
+    console.log('[AddDepositScreen] Sending transaction to Phantom...');
+    console.log('[AddDepositScreen] Transaction instructions:', transaction.instructions.length);
+
+    // Sign the transaction
+    const signedTransaction = await provider.signTransaction(transaction);
+    console.log('[AddDepositScreen] Transaction signed');
+
+    // Send the transaction ourselves
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+    console.log('[AddDepositScreen] Transaction sent, signature:', signature);
+
+    // Confirm transaction was actually sent
+    console.log('[AddDepositScreen] Confirming transaction...');
+
+    const confirmation = await connection.confirmTransaction(
+      {
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      },
+      'confirmed'
+    );
+
+    if (confirmation.value.err) {
+      console.error('[AddDepositScreen] Transaction failed:', confirmation.value.err);
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+
+    console.log('[AddDepositScreen] Transaction confirmed!');
+
+    // Calculate deposit PDA address for storage
+    const { deriveDepositPDA } = await import('../utils/solanaProgram');
+    const [depositPDA] = deriveDepositPDA(depositorPubkey, depositSeed);
+    const depositAddressStr = depositPDA.toBase58();
+
+    // Store deposit seed and address for later operations (proof of life, withdraw, claim)
+    try {
+      const storedDepositsJson = localStorage.getItem('solana_deposits');
+      const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
+
+      // Store by deposit address for easy lookup
+      storedDeposits[depositAddressStr] = {
+        depositSeed,
+        depositAddress: depositAddressStr,
+        depositor: walletAddress,
+        receiver,
+        tokenMint: selectedToken.mint,
+        amount,
+        timestamp: Date.now(),
+      };
+
+      localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
+      console.log('[AddDepositScreen] Deposit seed and address stored');
+    } catch (error) {
+      console.error('[AddDepositScreen] Failed to store deposit info:', error);
+    }
+
     Alert.alert('Success!', `Deposit created!\nSignature: ${signature}\nDeposit ID: ${depositSeed}`);
     navigation.goBack();
   };

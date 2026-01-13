@@ -16,6 +16,8 @@ export interface Deposit {
   elapsed?: number;
   isExpired?: boolean;
   depositAddress?: string; // Solana PDA address
+  decimals?: number; // Token decimals for proper amount display
+  tokenSymbol?: string; // Token symbol for display
 }
 
 interface DepositCardProps {
@@ -27,15 +29,22 @@ interface DepositCardProps {
 export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: DepositCardProps) {
   const { t } = useLanguage();
   
-  // Handle both EVM (string with 18 decimals) and Solana (number with 9 decimals) amounts
+  // Handle both EVM (string with 18 decimals) and Solana (variable decimals) amounts
   const formatAmount = () => {
     const amountNum = typeof deposit.amount === 'string' ? parseFloat(deposit.amount) : deposit.amount;
-    // If it's a very large number, it's likely in smallest units (lamports/wei)
-    if (amountNum > 1e12) {
-      // Solana uses 9 decimals for native tokens, EVM uses 18
-      const decimals = deposit.tokenMint ? 9 : 18;
+
+    // Use provided decimals if available, otherwise fallback to defaults
+    if (deposit.decimals !== undefined) {
+      return (amountNum / Math.pow(10, deposit.decimals)).toFixed(4);
+    }
+
+    // Fallback: if it's a very large number, it's likely in smallest units (lamports/wei)
+    if (amountNum >= 1e9) {
+      // Solana native token uses 9 decimals, EVM uses 18
+      const decimals = deposit.tokenMint || deposit.tokenAddress?.includes('So11111111111111111111111111111111111111112') ? 9 : 18;
       return (amountNum / Math.pow(10, decimals)).toFixed(4);
     }
+
     // Already in base units
     return amountNum.toFixed(4);
   };
@@ -109,7 +118,9 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
       <View style={styles.details}>
         <View style={styles.detailRow}>
           <Ionicons name="cash-outline" size={16} color="#636e72" />
-          <Text style={styles.detailText}>{amount} {t.depositCard.amount}</Text>
+          <Text style={styles.detailText}>
+            {amount} {deposit.tokenSymbol || t.depositCard.amount}
+          </Text>
         </View>
 
         <View style={styles.detailRow}>

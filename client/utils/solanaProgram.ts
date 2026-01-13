@@ -16,14 +16,19 @@ import {
   TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
+  createSyncNativeInstruction,
+  NATIVE_MINT,
 } from '@solana/spl-token';
 import { Network } from '../types';
 
-// Program ID - update this if you redeploy
-export const PROGRAM_ID = new PublicKey('CEcndvG4iioZHttjPkmLiufzdwgQ1Au6N4HJGnmAvem8');
+// Program ID - updated to store deposit_seed in account data
+export const PROGRAM_ID = new PublicKey('4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra');
 
-// Deposit account data size (from Rust: 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 32 = 154 bytes)
-export const DEPOSIT_ACCOUNT_SIZE = 154;
+// Maximum deposit seed length (must match Rust)
+export const MAX_DEPOSIT_SEED_LENGTH = 32;
+
+// Deposit account data size (from Rust: 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 4 + 32 = 158 bytes)
+export const DEPOSIT_ACCOUNT_SIZE = 158;
 
 /**
  * Parsed deposit account data from on-chain
@@ -38,11 +43,10 @@ export interface SolanaDeposit {
   timeoutSeconds: number;
   bump: number;
   isClosed: boolean;
-  officialTokenMint: string;
+  depositSeed: string; // Now always available from on-chain data
   // Computed fields
   elapsed: number;
   isExpired: boolean;
-  depositSeed?: string; // If we can derive it
 }
 
 // PDA seeds
@@ -166,7 +170,67 @@ export async function buildDepositTransaction(
     timeoutSeconds
   );
 
-  // Create the instruction
+  // Build transaction
+  const transaction = new Transaction();
+  const { blockhash } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = depositor;
+
+  // Check if ATA exists and handle wrapped SOL
+  const userATAInfo = await connection.getAccountInfo(userATA);
+
+  if (!userATAInfo) {
+    // ATA doesn't exist - create it and wrap SOL
+    console.log('[solanaProgram] Creating ATA and wrapping SOL...');
+
+    // Create ATA
+    const createATAInstruction = createAssociatedTokenAccountInstruction(
+      depositor,
+      userATA,
+      depositor,
+      tokenMint
+    );
+    transaction.add(createATAInstruction);
+
+    // Wrap SOL by transferring to the ATA and syncing
+    const syncInstruction = createSyncNativeInstruction(userATA, TOKEN_PROGRAM_ID);
+    const transferInstruction = SystemProgram.transfer({
+      fromPubkey: depositor,
+      toPubkey: userATA,
+      lamports: Number(amount),
+    });
+
+    transaction.add(transferInstruction);
+    transaction.add(syncInstruction);
+  } else {
+    console.log('[solanaProgram] ATA exists, checking balance...');
+
+    // Check balance and add more if needed
+    const tokenBalance = await connection.getTokenAccountBalance(userATA);
+    const currentBalance = BigInt(Math.floor((tokenBalance.value.uiAmount || 0) * 1e9));
+    const requiredBalance = amount;
+
+    console.log(`[solanaProgram] Current balance: ${tokenBalance.value.uiAmount || 0} SOL`);
+    console.log(`[solanaProgram] Required balance: ${Number(amount) / 1e9} SOL`);
+
+    if (currentBalance < requiredBalance) {
+      const additionalLamports = Number(requiredBalance - currentBalance);
+      console.log(`[solanaProgram] Adding ${(additionalLamports / 1e9).toFixed(4)} SOL to ATA...`);
+
+      const transferInstruction = SystemProgram.transfer({
+        fromPubkey: depositor,
+        toPubkey: userATA,
+        lamports: additionalLamports,
+      });
+
+      const syncInstruction = createSyncNativeInstruction(userATA, TOKEN_PROGRAM_ID);
+
+      transaction.add(transferInstruction);
+      transaction.add(syncInstruction);
+    }
+  }
+
+  // Create the deposit instruction
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: depositor, isSigner: true, isWritable: true },
@@ -182,11 +246,6 @@ export async function buildDepositTransaction(
     data: instructionData,
   });
 
-  // Build transaction
-  const transaction = new Transaction();
-  const { blockhash } = await connection.getLatestBlockhash();
-  transaction.recentBlockhash = blockhash;
-  transaction.feePayer = depositor;
   transaction.add(instruction);
 
   return { transaction, depositSeed };
@@ -235,10 +294,33 @@ export function buildClaimInstructionData(depositSeed: string): Buffer {
 }
 
 /**
+ * Fetch deposit account data from blockchain
+ */
+export async function fetchDepositAccount(
+  connection: Connection,
+  depositAddress: string
+): Promise<SolanaDeposit | null> {
+  try {
+    const pubkey = new PublicKey(depositAddress);
+    const accountInfo = await connection.getAccountInfo(pubkey);
+
+    if (!accountInfo || !accountInfo.data) {
+      console.log('[solanaProgram] Deposit account not found:', depositAddress);
+      return null;
+    }
+
+    return parseDepositAccount(Buffer.from(accountInfo.data), pubkey);
+  } catch (error) {
+    console.error('[solanaProgram] Error fetching deposit account:', error);
+    return null;
+  }
+}
+
+/**
  * Parse deposit account data from raw bytes
  */
 export function parseDepositAccount(data: Buffer, address: PublicKey): SolanaDeposit | null {
-  if (data.length < DEPOSIT_ACCOUNT_SIZE) {
+  if (data.length < 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 4) { // Minimum size to read string length
     console.log('[solanaProgram] Invalid deposit account data size:', data.length);
     return null;
   }
@@ -278,8 +360,13 @@ export function parseDepositAccount(data: Buffer, address: PublicKey): SolanaDep
     const isClosed = data.readUInt8(offset) === 1;
     offset += 1;
 
-    // official_token_mint: Pubkey (32 bytes)
-    const officialTokenMint = new PublicKey(data.slice(offset, offset + 32));
+    // deposit_seed_len: u32 (4 bytes)
+    const seedLength = data.readUInt32LE(offset);
+    offset += 4;
+
+    // deposit_seed: [u8; 32] (32 bytes, but only seedLength bytes are valid)
+    const seedBytes = data.slice(offset, offset + MAX_DEPOSIT_SEED_LENGTH);
+    const depositSeed = seedBytes.slice(0, seedLength).toString('utf-8');
 
     // Calculate elapsed time and expiry
     const now = Math.floor(Date.now() / 1000);
@@ -296,7 +383,7 @@ export function parseDepositAccount(data: Buffer, address: PublicKey): SolanaDep
       timeoutSeconds,
       bump,
       isClosed,
-      officialTokenMint: officialTokenMint.toBase58(),
+      depositSeed,
       elapsed,
       isExpired,
     };
@@ -437,26 +524,75 @@ export async function buildProofOfLifeTransaction(
   depositAddress: PublicKey,
   depositSeed: string
 ): Promise<Transaction> {
+  console.log('[solanaProgram] Building proof of life transaction');
+  console.log('[solanaProgram]   Depositor:', depositor.toBase58());
+  console.log('[solanaProgram]   Deposit Address:', depositAddress.toBase58());
+  console.log('[solanaProgram]   Deposit Seed:', depositSeed);
+
+  // DLM Token mint address (hardcoded in contract)
+  const DLM_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
+  console.log('[solanaProgram]   DLM Mint:', DLM_MINT.toBase58());
+
+  // Get depositor's DLM token ATA
+  const dlmATA = await getAssociatedTokenAddress(
+    DLM_MINT,
+    depositor,
+    false,
+    TOKEN_PROGRAM_ID
+  );
+  console.log('[solanaProgram]   DLM ATA:', dlmATA.toBase58());
+
+  // Check DLM balance
+  try {
+    const dlmBalance = await connection.getTokenAccountBalance(dlmATA);
+    console.log('[solanaProgram]   DLM Balance:', dlmBalance.value.uiAmountString || '0', 'DLM');
+  } catch (error) {
+    console.warn('[solanaProgram]   Could not fetch DLM balance:', error);
+  }
+
   // Build instruction data
   const instructionData = buildProofOfLifeInstructionData(depositSeed);
-
-  // Create the instruction (simplified - no token burning for now)
-  const instruction = new TransactionInstruction({
-    keys: [
-      { pubkey: depositor, isSigner: true, isWritable: false },
-      { pubkey: depositAddress, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    programId: PROGRAM_ID,
-    data: instructionData,
-  });
+  console.log('[solanaProgram]   Instruction data length:', instructionData.length, 'bytes');
 
   // Build transaction
   const transaction = new Transaction();
   const { blockhash } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = depositor;
+
+  // Check if DLM ATA exists, if not create it
+  const dlmATAInfo = await connection.getAccountInfo(dlmATA);
+  if (!dlmATAInfo) {
+    console.log('[solanaProgram] Creating DLM token account...');
+    transaction.add(
+      createAssociatedTokenAccountInstruction(
+        depositor,
+        dlmATA,
+        depositor,
+        DLM_MINT
+      )
+    );
+  } else {
+    console.log('[solanaProgram] DLM ATA already exists');
+  }
+
+  // Create the proof of life instruction with DLM token burning
+  // Account structure: depositor, depositPDA, dlmATA, dlmMint, tokenProgram, systemProgram
+  const instruction = new TransactionInstruction({
+    keys: [
+      { pubkey: depositor, isSigner: true, isWritable: false },
+      { pubkey: depositAddress, isSigner: false, isWritable: true },
+      { pubkey: dlmATA, isSigner: false, isWritable: true },
+      { pubkey: DLM_MINT, isSigner: false, isWritable: true }, // Must be writable for burning
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data: instructionData,
+  });
+
   transaction.add(instruction);
+  console.log('[solanaProgram] Transaction built with', transaction.instructions.length, 'instruction(s)');
 
   return transaction;
 }

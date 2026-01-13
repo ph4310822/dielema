@@ -19,7 +19,7 @@ The easiest way to deploy the Dielemma smart contract is using Solana Playground
 
 4. **Update the Program ID**
    - In Playground, the program ID will be automatically generated
-   - Or use our existing program ID: `45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj`
+   - Or use our existing program ID: `4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra`
    - To use our ID, update the `declare_id!` line with this ID
 
 5. **Build**
@@ -72,7 +72,7 @@ solana program show <program-id> --url devnet
 
 ## Program ID
 
-The current program ID is: `45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj`
+The current program ID is: `4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra`
 
 Keypair location: `target/deploy/dielemma-program-keypair.json`
 
@@ -81,7 +81,7 @@ Keypair location: `target/deploy/dielemma-program-keypair.json`
 After deployment, verify the contract is deployed:
 
 ```bash
-solana program show 45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj --url devnet
+solana program show 4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra --url devnet
 ```
 
 ## Update Backend Configuration

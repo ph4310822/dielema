@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/native';
+import { PublicKey } from '@solana/web3.js';
 
 import { RootStackParamList, Chain, Network } from '../types';
 import {
@@ -29,7 +30,7 @@ import {
 import {
   getConnection,
   buildProofOfLifeTransaction,
-  getDepositByAddress,
+  fetchDepositAccount,
 } from '../utils/solanaProgram';
 
 type ProofOfLifeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProofOfLife'>;
@@ -69,11 +70,44 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
     console.log('[ProofOfLife] Checking token status...');
 
     if (isSolana(chain)) {
-      // Solana: Direct proof of life (no DLM token required on Solana currently)
-      console.log('[ProofOfLife] Solana chain detected, skipping DLM check');
-      setStep('proof');
-      setIsApproved(true);
-      setDlmBalance('N/A');
+      // Solana: Check DLM token balance for proof of life burning
+      console.log('[ProofOfLife] Solana chain detected, checking DLM balance...');
+      setLoading(true);
+
+      try {
+        // Import Solana token helper
+        const { getTokenBalance } = require('../utils/solanaTokens');
+
+        // DLM token mint address on Solana devnet
+        const dlmMintAddress = '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm';
+
+        // Get DLM balance
+        const dlmBalance = await getTokenBalance(walletAddress, dlmMintAddress, network);
+        setDlmBalance(dlmBalance.toString());
+
+        console.log('[ProofOfLife] Solana DLM balance:', dlmBalance);
+
+        // Check if user has at least 1 DLM
+        if (dlmBalance < 1) {
+          Alert.alert(
+            'Insufficient DLM Tokens',
+            'You need at least 1 DLM token to submit proof of life on Solana.\n\nCurrent balance: ' +
+              dlmBalance.toString() +
+              ' DLM',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+          return;
+        }
+
+        // Solana doesn't require approval (user signs transaction directly)
+        setStep('proof');
+        setIsApproved(true);
+      } catch (error: any) {
+        console.error('[ProofOfLife] Failed to check Solana DLM balance:', error);
+        Alert.alert('Error', 'Failed to check DLM token balance: ' + (error.message || 'Unknown error'));
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -181,32 +215,88 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
           return;
         }
 
-        console.log('[ProofOfLife] Building Solana proof of life transaction');
-        const { PublicKey } = await import('@solana/web3.js');
-        
+        console.log('[ProofOfLife] 1. Building Solana proof of life transaction');
+
         const connection = getConnection(network);
         const depositorPubkey = new PublicKey(walletAddress);
         const depositPubkey = new PublicKey(depositAddress);
 
-        // Get deposit info to find the seed
-        const depositInfo = await getDepositByAddress(connection, depositAddress);
-        if (!depositInfo) {
-          Alert.alert('Error', 'Could not fetch deposit information');
+        console.log('[ProofOfLife] 2. connection instructed');
+
+        // Get the deposit seed from localStorage or fetch from contract
+        let depositSeed: string | null = null;
+        try {
+          const storedDepositsJson = localStorage.getItem('solana_deposits');
+          console.log('[ProofOfLife] 3. storedDepositsJson: ', storedDepositsJson);
+          const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
+          const storedDeposit = storedDeposits[depositAddress];
+          depositSeed = storedDeposit?.depositSeed;
+        } catch (error) {
+          console.error('[ProofOfLife] Failed to load stored deposit seed:', error);
+        }
+
+        // If not in localStorage, try fetching from contract
+        if (!depositSeed) {
+          console.log('[ProofOfLife] 4. deposit seed not found in localStorage, fetching from contract...');
+          try {
+            const depositAccount = await fetchDepositAccount(connection, depositAddress);
+            if (depositAccount && depositAccount.depositSeed) {
+              depositSeed = depositAccount.depositSeed;
+              console.log('[ProofOfLife] 5. deposit seed fetched from contract:', depositSeed);
+
+              // Store it in localStorage for future use
+              try {
+                const storedDepositsJson = localStorage.getItem('solana_deposits');
+                const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
+                if (!storedDeposits[depositAddress]) {
+                  storedDeposits[depositAddress] = {};
+                }
+                storedDeposits[depositAddress].depositSeed = depositSeed;
+                localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
+                console.log('[ProofOfLife] 6. deposit seed cached to localStorage');
+              } catch (cacheError) {
+                console.warn('[ProofOfLife] Failed to cache seed to localStorage:', cacheError);
+              }
+            }
+          } catch (error) {
+            console.error('[ProofOfLife] Failed to fetch deposit seed from contract:', error);
+          }
+        }
+
+        if (!depositSeed) {
+          console.log('[ProofOfLife] 7. deposit seed not found anywhere.');
+          Alert.alert(
+            'Error',
+            'Deposit seed not found. This deposit was created before seed storage was implemented.\n\nPlease withdraw and recreate the deposit.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
           setLoading(false);
           return;
         }
 
-        // Build the proof of life transaction
-        // Note: The Solana program currently requires official_token_mint to be set
-        // If not set, the transaction will fail on-chain
+
+        console.log('[ProofOfLife] Using deposit seed:', depositSeed);
+
+        // DEBUG: Verify all parameters before calling the function
+        console.log('[ProofOfLife] DEBUG - About to call buildProofOfLifeTransaction with:');
+        console.log('[ProofOfLife] DEBUG - connection:', connection ? 'exists' : 'MISSING');
+        console.log('[ProofOfLife] DEBUG - depositorPubkey:', depositorPubkey.toBase58());
+        console.log('[ProofOfLife] DEBUG - depositPubkey:', depositPubkey.toBase58());
+        console.log('[ProofOfLife] DEBUG - depositSeed:', depositSeed);
+        console.log('[ProofOfLife] DEBUG - buildProofOfLifeTransaction function:', typeof buildProofOfLifeTransaction);
+
+        console.log('[ProofOfLife] Calling buildProofOfLifeTransaction...');
+        // Build the proof of life transaction with the correct seed
         const transaction = await buildProofOfLifeTransaction(
           connection,
           depositorPubkey,
           depositPubkey,
-          `${depositInfo.lastProofTimestamp}` // Using timestamp as seed approximation
+          depositSeed
         );
+        console.log('[ProofOfLife] Transaction built successfully');
 
         // Sign and send
+        console.log('[ProofOfLife] Calling sendSolanaTransaction...');
         const signature = await sendSolanaTransaction(transaction);
 
         console.log('[ProofOfLife] Solana proof submitted:', signature);

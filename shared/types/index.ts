@@ -210,7 +210,10 @@ export const CHAIN_CONFIGS: Record<ChainType, ChainConfig> = {
       devnet: 'https://api.devnet.solana.com',
       local: 'http://localhost:8899',
     },
-    programId: '45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj',
+    programId: '4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra',
+    officialTokenAddress: {
+      devnet: '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm', // DLM token on Solana devnet
+    },
     nativeCurrency: {
       name: 'Solana',
       symbol: 'SOL',

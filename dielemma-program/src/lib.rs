@@ -23,10 +23,13 @@ use spl_token::{
 };
 
 // Declare program ID
-solana_program::declare_id!("45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj");
+solana_program::declare_id!("4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
+
+/// Official DLM token mint address (hardcoded)
+pub const OFFICIAL_DLM_TOKEN_MINT: &str = "9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm";
 
 /// Instruction types for the Dielemma program
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -52,15 +55,14 @@ pub enum DielemmaInstruction {
         timeout_seconds: u64,
     },
 
-    /// Proof of life - resets the timer and burns 1 official token
+    /// Proof of life - resets the timer and burns 1 DLM token
     /// Accounts:
     /// 0. [signer] Depositor
     /// 1. [writable] Deposit account (PDA)
-    /// 2. [writable] Depositor's official token account
-    /// 3. [writable] PDA token account to hold tokens for burning
-    /// 4. [] Official token mint
-    /// 5. [] Token program
-    /// 6. [] System program
+    /// 2. [writable] Depositor's DLM token account
+    /// 3. [writable] Official DLM token mint (supply decreases when burning)
+    /// 4. [] Token program
+    /// 5. [] System program
     ProofOfLife {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
@@ -100,16 +102,10 @@ pub enum DielemmaInstruction {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
     },
-
-    /// Set the official token mint address for proof-of-life burning
-    /// Accounts:
-    /// 0. [signer] Admin/Owner
-    /// 1. [] Official token mint
-    SetOfficialToken {
-        /// Official token mint address
-        official_token_mint: Pubkey,
-    },
 }
+
+/// Maximum length of deposit seed string
+pub const MAX_DEPOSIT_SEED_LENGTH: usize = 32;
 
 /// Deposit account state stored on-chain
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -130,12 +126,17 @@ pub struct DepositAccount {
     pub bump: u8,
     /// Whether tokens have been withdrawn/claimed
     pub is_closed: bool,
-    /// Official token mint for proof-of-life burning
-    pub official_token_mint: Pubkey,
+    /// Length of deposit_seed
+    pub deposit_seed_len: u32,
+    /// Deposit seed used to derive this account's PDA (fixed-size array)
+    pub deposit_seed: [u8; MAX_DEPOSIT_SEED_LENGTH],
 }
 
 /// Calculate the size needed for a DepositAccount
-pub const DEPOSIT_ACCOUNT_SIZE: usize = 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 32; // 154 bytes
+/// 32 (depositor) + 32 (receiver) + 32 (token_mint) + 8 (amount) + 8 (last_proof_timestamp) +
+/// 8 (timeout_seconds) + 1 (bump) + 1 (is_closed) + 4 (seed length) + 32 (seed data)
+/// = 158 bytes
+pub const DEPOSIT_ACCOUNT_SIZE: usize = 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 4 + MAX_DEPOSIT_SEED_LENGTH;
 
 // Derive PDA seeds
 pub const DEPOSIT_SEED_PREFIX: &[u8] = b"deposit";
@@ -149,29 +150,102 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let instruction = DielemmaInstruction::try_from_slice(instruction_data)
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
+    // Manually parse instruction to avoid stack overflow with Borsh + String
+    // Instruction format: discriminant (4 bytes) + data
+    if instruction_data.len() < 4 {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    match instruction {
-        DielemmaInstruction::Deposit {
-            deposit_seed,
-            receiver,
-            amount,
-            timeout_seconds,
-        } => process_deposit(program_id, accounts, deposit_seed, receiver, amount, timeout_seconds),
-        DielemmaInstruction::ProofOfLife { deposit_seed } => {
+    let discriminant = u32::from_le_bytes(
+        instruction_data[0..4]
+            .try_into()
+            .map_err(|_| ProgramError::InvalidInstructionData)?
+    );
+
+    match discriminant {
+        0 => {
+            // Deposit instruction
+            let data = &instruction_data[4..];
+            let offset = &mut 0;
+
+            // Parse deposit_seed (length-prefixed string)
+            let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
+                .try_into().unwrap()) as usize;
+            *offset += 4;
+            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+            *offset += seed_len;
+
+            // Parse receiver (32 bytes)
+            let receiver_bytes = &data[*offset..*offset + 32];
+            *offset += 32;
+            let receiver = Pubkey::try_from(receiver_bytes)
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            // Parse amount (u64)
+            let amount = u64::from_le_bytes(data[*offset..*offset + 8]
+                .try_into().unwrap());
+            *offset += 8;
+
+            // Parse timeout_seconds (u64)
+            let timeout_seconds = u64::from_le_bytes(data[*offset..*offset + 8]
+                .try_into().unwrap());
+
+            process_deposit(program_id, accounts, deposit_seed, &receiver, amount, timeout_seconds)
+        }
+        1 => {
+            // ProofOfLife instruction
+            let data = &instruction_data[4..];
+            let offset = &mut 0;
+
+            let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
+                .try_into().unwrap()) as usize;
+            *offset += 4;
+            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
             process_proof_of_life(program_id, accounts, deposit_seed)
         }
-        DielemmaInstruction::Withdraw { deposit_seed } => {
+        2 => {
+            // Withdraw instruction
+            let data = &instruction_data[4..];
+            let offset = &mut 0;
+
+            let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
+                .try_into().unwrap()) as usize;
+            *offset += 4;
+            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
             process_withdraw(program_id, accounts, deposit_seed)
         }
-        DielemmaInstruction::Claim { deposit_seed } => process_claim(program_id, accounts, deposit_seed),
-        DielemmaInstruction::CloseAccount { deposit_seed } => {
+        3 => {
+            // Claim instruction
+            let data = &instruction_data[4..];
+            let offset = &mut 0;
+
+            let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
+                .try_into().unwrap()) as usize;
+            *offset += 4;
+            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            process_claim(program_id, accounts, deposit_seed)
+        }
+        4 => {
+            // CloseAccount instruction
+            let data = &instruction_data[4..];
+            let offset = &mut 0;
+
+            let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
+                .try_into().unwrap()) as usize;
+            *offset += 4;
+            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
             process_close_account(program_id, accounts, deposit_seed)
         }
-        DielemmaInstruction::SetOfficialToken {
-            official_token_mint,
-        } => process_set_official_token(program_id, accounts, official_token_mint),
+        _ => Err(ProgramError::InvalidInstructionData),
     }
 }
 
@@ -179,8 +253,8 @@ pub fn process_instruction(
 fn process_deposit(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    deposit_seed: String,
-    receiver: Pubkey,
+    deposit_seed: &str,  // Use reference to avoid copying
+    receiver: &Pubkey,   // Use reference to avoid copying
     amount: u64,
     timeout_seconds: u64,
 ) -> ProgramResult {
@@ -274,7 +348,7 @@ fn process_deposit(
     // Calculate token account size
     let token_account_size = TokenAccount::LEN;
 
-    // Create token account
+    // Create token account (needs PDA signature since it will be owned by PDA)
     let create_token_account_ix = system_instruction::create_account(
         depositor.key,
         deposit_token_account.key,
@@ -283,16 +357,21 @@ fn process_deposit(
         &spl_token::id(),
     );
 
-    invoke(
+    invoke_signed(
         &create_token_account_ix,
         &[
             depositor.clone(),
             deposit_token_account.clone(),
             system_program.clone(),
         ],
+        &[&[
+            TOKEN_ACCOUNT_SEED_PREFIX,
+            deposit_pda.as_ref(),
+            &[token_bump],
+        ]],
     )?;
 
-    // Initialize token account
+    // Initialize token account (owned by deposit PDA, so we need invoke_signed)
     let init_token_account_ix = initialize_account(
         &spl_token::id(),
         deposit_token_account.key,
@@ -300,7 +379,7 @@ fn process_deposit(
         deposit_account.key,
     )?;
 
-    invoke(
+    invoke_signed(
         &init_token_account_ix,
         &[
             deposit_token_account.clone(),
@@ -309,13 +388,18 @@ fn process_deposit(
             rent_account.clone(),
             token_program.clone(),
         ],
+        &[&[
+            TOKEN_ACCOUNT_SEED_PREFIX,
+            deposit_pda.as_ref(),
+            &[token_bump],
+        ]],
     )?;
 
     // Transfer tokens from depositor to deposit token account
     let transfer_ix = transfer(
         &spl_token::id(),
-        deposit_token_account.key,
-        depositor_token_account.key,
+        depositor_token_account.key,  // Source: depositor's ATA
+        deposit_token_account.key,      // Destination: deposit's token account
         depositor.key,
         &[],
         amount,
@@ -332,16 +416,24 @@ fn process_deposit(
     )?;
 
     // Create deposit account state
+    let seed_bytes = deposit_seed.as_bytes();
+    let seed_len = seed_bytes.len() as u32;
+
+    // Initialize fixed-size array with seed data
+    let mut seed_array = [0u8; MAX_DEPOSIT_SEED_LENGTH];
+    seed_array[..seed_bytes.len()].copy_from_slice(seed_bytes);
+
     let deposit_state = DepositAccount {
         depositor: *depositor.key,
-        receiver,
+        receiver: *receiver,  // Copy the Pubkey
         token_mint: *token_mint.key,
         amount,
         last_proof_timestamp: clock.unix_timestamp,
         timeout_seconds,
         bump,
         is_closed: false,
-        official_token_mint: Pubkey::default(), // Will be set by admin
+        deposit_seed_len: seed_len,
+        deposit_seed: seed_array,
     };
 
     // Serialize and write to account
@@ -355,14 +447,13 @@ fn process_deposit(
 fn process_proof_of_life(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    deposit_seed: String,
+    deposit_seed: &str,  // Use reference
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
     let depositor = next_account_info(account_info_iter)?;
     let deposit_account = next_account_info(account_info_iter)?;
     let depositor_token_account = next_account_info(account_info_iter)?;
-    let burn_token_account = next_account_info(account_info_iter)?;
     let official_token_mint = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
     let system_program = next_account_info(account_info_iter)?;
@@ -403,64 +494,38 @@ fn process_proof_of_life(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Check if official token mint is set
-    if deposit_state.official_token_mint == Pubkey::default() {
-        msg!("Official token mint not set");
+    // Verify official token mint matches the hardcoded DLM token
+    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    if *official_token_mint.key != official_dlm_mint {
+        msg!("Official token mint must be DLM token");
+        msg!("Expected: {}", OFFICIAL_DLM_TOKEN_MINT);
+        msg!("Got: {}", official_token_mint.key);
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Verify official token mint matches
-    if deposit_state.official_token_mint != *official_token_mint.key {
-        msg!("Official token mint mismatch");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Amount to burn: 1 token (assuming 9 decimals for Solana tokens)
+    // Amount to burn: 1 DLM token (9 decimals)
     let burn_amount: u64 = 1_000_000_000;
 
-    // Transfer 1 token from depositor to burn token account
-    let transfer_ix = transfer(
+    // Burn directly from depositor's token account
+    let burn_ix = burn(
         &spl_token::id(),
-        burn_token_account.key,
         depositor_token_account.key,
+        official_token_mint.key,
         depositor.key,
         &[],
         burn_amount,
     )?;
 
     invoke(
-        &transfer_ix,
+        &burn_ix,
         &[
             depositor_token_account.clone(),
-            burn_token_account.clone(),
+            official_token_mint.clone(),
             depositor.clone(),
             token_program.clone(),
         ],
-    )?;
-
-    // Burn the tokens
-    let burn_ix = burn(
-        &spl_token::id(),
-        burn_token_account.key,
-        official_token_mint.key,
-        burn_token_account.key,
-        &[],
-        burn_amount,
-    )?;
-
-    invoke_signed(
-        &burn_ix,
-        &[
-            burn_token_account.clone(),
-            official_token_mint.clone(),
-            token_program.clone(),
-        ],
-        &[&[
-            DEPOSIT_SEED_PREFIX,
-            depositor.key.as_ref(),
-            deposit_seed.as_bytes(),
-            &[_bump],
-        ]],
     )?;
 
     // Update timestamp
@@ -478,7 +543,7 @@ fn process_proof_of_life(
 fn process_withdraw(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    deposit_seed: String,
+    deposit_seed: &str,  // Use reference
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -513,18 +578,21 @@ fn process_withdraw(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Get current token balance
-    let token_account_data = deposit_token_account.data.borrow();
-    let token_account_state = TokenAccount::unpack(&token_account_data)?;
+    // Get current token balance (scoped to ensure borrow is released before we borrow again)
+    let token_amount = {
+        let token_account_data = deposit_token_account.data.borrow();
+        let token_account_state = TokenAccount::unpack(&token_account_data)?;
+        token_account_state.amount
+    }; // token_account_data is dropped here
 
-    // Transfer tokens back to depositor
+    // Transfer tokens back to depositor (from deposit_token_account to depositor_token_account)
     let transfer_ix = transfer(
         &spl_token::id(),
-        depositor_token_account.key,
-        deposit_token_account.key,
+        deposit_token_account.key,      // Source: deposit's token account
+        depositor_token_account.key,    // Destination: depositor's ATA
         deposit_account.key,
         &[],
-        token_account_state.amount,
+        token_amount,
     )?;
 
     invoke_signed(
@@ -543,11 +611,11 @@ fn process_withdraw(
         ]],
     )?;
 
-    // Mark as closed
+    // Mark as closed (now safe to borrow again)
     deposit_state.is_closed = true;
     deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
 
-    msg!("Withdrawal successful: {} tokens", token_account_state.amount);
+    msg!("Withdrawal successful: {} tokens", token_amount);
     Ok(())
 }
 
@@ -555,7 +623,7 @@ fn process_withdraw(
 fn process_claim(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    deposit_seed: String,
+    deposit_seed: &str,  // Use reference
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -602,18 +670,21 @@ fn process_claim(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Get current token balance
-    let token_account_data = deposit_token_account.data.borrow();
-    let token_account_state = TokenAccount::unpack(&token_account_data)?;
+    // Get current token balance (scoped to ensure borrow is released before we borrow again)
+    let token_amount = {
+        let token_account_data = deposit_token_account.data.borrow();
+        let token_account_state = TokenAccount::unpack(&token_account_data)?;
+        token_account_state.amount
+    }; // token_account_data is dropped here
 
-    // Transfer tokens to receiver
+    // Transfer tokens to receiver (from deposit_token_account to receiver_token_account)
     let transfer_ix = transfer(
         &spl_token::id(),
-        receiver_token_account.key,
-        deposit_token_account.key,
+        deposit_token_account.key,      // Source: deposit's token account
+        receiver_token_account.key,     // Destination: receiver's ATA
         deposit_account.key,
         &[],
-        token_account_state.amount,
+        token_amount,
     )?;
 
     invoke_signed(
@@ -632,7 +703,12 @@ fn process_claim(
         ]],
     )?;
 
-    msg!("Claim successful: {} tokens transferred to receiver", token_account_state.amount);
+    // Mark as closed (now safe to borrow again)
+    let mut deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
+    deposit_state.is_closed = true;
+    deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
+
+    msg!("Claim successful: {} tokens transferred to receiver", token_amount);
     Ok(())
 }
 
@@ -640,7 +716,7 @@ fn process_claim(
 fn process_close_account(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    deposit_seed: String,
+    deposit_seed: &str,  // Use reference
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -680,30 +756,6 @@ fn process_close_account(
     **refund_recipient.lamports.borrow_mut() += close_lamports;
 
     msg!("Account closed, {} lamports refunded", close_lamports);
-    Ok(())
-}
-
-/// Process set official token instruction
-fn process_set_official_token(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    official_token_mint: Pubkey,
-) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-
-    let admin = next_account_info(account_info_iter)?;
-    let _official_token_mint_account = next_account_info(account_info_iter)?;
-
-    // For simplicity, we allow any signer to set the official token mint
-    // In production, you should implement proper access control
-    if !admin.is_signer {
-        msg!("Admin must sign");
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    msg!("Official token mint set to: {}", official_token_mint);
-    // Note: In a real implementation, you'd want to store this in a config account
-    // For now, each deposit will have its own official_token_mint field that can be updated
     Ok(())
 }
 

@@ -35,6 +35,7 @@ const ERC20_ABI = [
 // DLM Token addresses from backend shared types
 const DLM_TOKEN_ADDRESSES: Record<string, string> = {
   bsc_testnet: '0x11443f26414Cf3990dD6BD051dEBa4428164a799',
+  solana_devnet: '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm', // DLM token on Solana devnet
   // Add other chains as needed
 };
 

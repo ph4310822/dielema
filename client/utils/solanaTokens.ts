@@ -22,6 +22,12 @@ export const COMMON_TOKENS: Record<string, { symbol: string; name: string; decim
     decimals: 9,
     logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
   },
+  // DLM Token (Dielemma)
+  '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm': {
+    symbol: 'DLM',
+    name: 'Dielemma',
+    decimals: 9,
+  },
   // USDC
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': {
     symbol: 'USDC',

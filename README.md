@@ -42,7 +42,7 @@ dielemma/
 
 | Chain | Status | Contract Address | Network |
 |-------|--------|------------------|---------|
-| Solana | ✅ Deployed | `45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj` | Devnet |
+| Solana | ✅ Deployed | `4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra` | Devnet |
 | BSC | 🚀 Ready | *Deploy to get address* | Testnet/Mainnet |
 | Ethereum | 🚀 Ready | *Deploy to get address* | Sepolia |
 | Polygon | 🚀 Ready | *Deploy to get address* | Amoy |
@@ -79,7 +79,7 @@ DEFAULT_NETWORK=testnet
 
 # Solana Configuration
 SOLANA_RPC_URL=https://api.devnet.solana.com
-SOLANA_PROGRAM_ID=45BVWUn3fdnLwikmk9WZjcXjLBQNiBprsYKKhV1NhCQj
+SOLANA_PROGRAM_ID=4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra
 
 # BSC Configuration (after deployment)
 BSC_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545
@@ -357,6 +357,6 @@ MIT License - see LICENSE file for details
 
 
 Solana contract deployed on devnet:
-Program ID: CEcndvG4iioZHttjPkmLiufzdwgQ1Au6N4HJGnmAvem8
+Program ID: 4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra
 You can view it on Solana Explorer:
-https://explorer.solana.com/address/CEcndvG4iioZHttjPkmLiufzdwgQ1Au6N4HJGnmAvem8?cluster=devnet
+https://explorer.solana.com/address/4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra?cluster=devnet

@@ -35,8 +35,10 @@ import {
   getClaimableDeposits,
   buildWithdrawTransaction,
   buildClaimTransaction,
+  fetchDepositAccount,
   SolanaDeposit,
 } from '../utils/solanaProgram';
+import { getTokenMetadata } from '../utils/solanaTokens';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -154,23 +156,56 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
         console.log('[HomeScreen] Fetching Solana deposits directly from RPC');
         const connection = getConnection(network);
         const solanaDeposits = await getUserDeposits(connection, address);
-        
+
+        // Load stored deposit seeds from localStorage
+        let storedDeposits: Record<string, any> = {};
+        try {
+          const storedDepositsJson = localStorage.getItem('solana_deposits');
+          storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
+        } catch (error) {
+          console.error('[HomeScreen] Failed to load stored deposits:', error);
+        }
+
         // Convert SolanaDeposit to Deposit format for UI compatibility
-        const formattedDeposits: Deposit[] = solanaDeposits.map((d, index) => ({
-          depositIndex: index,
-          depositor: d.depositor,
-          receiver: d.receiver,
-          tokenMint: d.tokenMint,
-          amount: Number(d.amount),
-          lastProofTimestamp: d.lastProofTimestamp,
-          timeoutSeconds: d.timeoutSeconds,
-          elapsed: d.elapsed,
-          isExpired: d.isExpired,
-          isClosed: d.isClosed,
-          // Store the PDA address for later use
-          depositAddress: d.address,
-        }));
-        
+        const formattedDeposits: Deposit[] = solanaDeposits.map((d, index) => {
+          const tokenMetadata = getTokenMetadata(d.tokenMint, network);
+          const storedDeposit = storedDeposits[d.address];
+
+          // Prioritize on-chain seed, fall back to localStorage
+          const depositSeed = d.depositSeed || storedDeposit?.depositSeed;
+
+          // If we got the seed from on-chain, cache it to localStorage
+          if (d.depositSeed && !storedDeposit?.depositSeed) {
+            try {
+              if (!storedDeposits[d.address]) {
+                storedDeposits[d.address] = {};
+              }
+              storedDeposits[d.address].depositSeed = d.depositSeed;
+              localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
+            } catch (cacheError) {
+              console.warn('[HomeScreen] Failed to cache deposit seed:', cacheError);
+            }
+          }
+
+          return {
+            depositIndex: index,
+            depositor: d.depositor,
+            receiver: d.receiver,
+            tokenAddress: d.tokenMint, // Map tokenMint to tokenAddress for compatibility
+            amount: d.amount.toString(), // Keep bigint as string to preserve precision
+            lastProofTimestamp: d.lastProofTimestamp,
+            timeoutSeconds: d.timeoutSeconds,
+            elapsed: d.elapsed,
+            isExpired: d.isExpired,
+            isClosed: d.isClosed,
+            decimals: tokenMetadata.decimals,
+            tokenSymbol: tokenMetadata.symbol,
+            // Store the PDA address and seed for later use
+            depositAddress: d.address,
+            depositSeed, // Now includes on-chain seed from SolanaDeposit
+          };
+        });
+
         console.log('[HomeScreen] Solana deposits fetched:', formattedDeposits.length);
         setDeposits(formattedDeposits);
       } else {
@@ -192,11 +227,11 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
   const fetchClaimableDeposits = async (address: string) => {
     try {
       if (!isSolana(chain)) return;
-      
+
       console.log('[HomeScreen] Fetching claimable deposits for receiver:', address);
       const connection = getConnection(network);
       const claimable = await getClaimableDeposits(connection, address);
-      
+
       // Convert to Deposit format and filter for expired only
       const formattedClaimable: Deposit[] = claimable
         .filter(d => d.isExpired && !d.isClosed)
@@ -204,16 +239,17 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
           depositIndex: index,
           depositor: d.depositor,
           receiver: d.receiver,
-          tokenMint: d.tokenMint,
-          amount: Number(d.amount),
+          tokenAddress: d.tokenMint, // Map tokenMint to tokenAddress
+          amount: d.amount.toString(), // Keep bigint as string
           lastProofTimestamp: d.lastProofTimestamp,
           timeoutSeconds: d.timeoutSeconds,
           elapsed: d.elapsed,
           isExpired: d.isExpired,
           isClosed: d.isClosed,
           depositAddress: d.address,
+          depositSeed: d.depositSeed, // Include on-chain deposit seed
         }));
-      
+
       console.log('[HomeScreen] Claimable deposits:', formattedClaimable.length);
       setClaimableDeposits(formattedClaimable);
     } catch (error) {
@@ -240,21 +276,63 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
 
       console.log('[HomeScreen] Building Solana claim transaction');
       const { PublicKey } = await import('@solana/web3.js');
-      
+
       const connection = getConnection(network);
       const receiverPubkey = new PublicKey(walletAddress);
       const depositorPubkey = new PublicKey(deposit.depositor);
       const depositPubkey = new PublicKey(deposit.depositAddress);
       const tokenMintPubkey = new PublicKey(deposit.tokenMint || deposit.tokenAddress);
-      
-      // Build the claim transaction
+
+      // Get the deposit seed from localStorage or fetch from contract
+      let depositSeed: string | null = deposit.depositSeed || null;
+
+      if (!depositSeed) {
+        console.log('[HomeScreen] Deposit seed not in localStorage, fetching from contract...');
+        try {
+          const depositAccount = await fetchDepositAccount(connection, deposit.depositAddress);
+          if (depositAccount && depositAccount.depositSeed) {
+            depositSeed = depositAccount.depositSeed;
+            console.log('[HomeScreen] Deposit seed fetched from contract:', depositSeed);
+
+            // Cache it to localStorage
+            try {
+              const storedDepositsJson = localStorage.getItem('solana_deposits');
+              const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
+              if (!storedDeposits[deposit.depositAddress]) {
+                storedDeposits[deposit.depositAddress] = {};
+              }
+              storedDeposits[deposit.depositAddress].depositSeed = depositSeed;
+              localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
+            } catch (cacheError) {
+              console.warn('[HomeScreen] Failed to cache seed:', cacheError);
+            }
+          }
+        } catch (error) {
+          console.error('[HomeScreen] Failed to fetch deposit seed:', error);
+        }
+      }
+
+      if (!depositSeed) {
+        console.log('[HomeScreen] Deposit seed not found anywhere');
+        Alert.alert(
+          'Error',
+          'Deposit seed not found. This deposit was created before seed storage was implemented.\n\nPlease use a CLI tool to claim or contact support.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+
+      console.log('[HomeScreen] Using deposit seed:', depositSeed);
+
+      // Build the claim transaction with the correct seed
       const transaction = await buildClaimTransaction(
         connection,
         receiverPubkey,
         depositorPubkey,
         depositPubkey,
         tokenMintPubkey,
-        `${deposit.lastProofTimestamp}` // Using timestamp as seed approximation
+        depositSeed // Use the actual deposit seed, not timestamp
       );
 
       // Sign and send
@@ -300,25 +378,61 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
 
         console.log('[HomeScreen] Solana withdraw - building transaction');
         const { PublicKey } = await import('@solana/web3.js');
-        
+
         const connection = getConnection(network);
         const depositorPubkey = new PublicKey(walletAddress);
         const depositPubkey = new PublicKey(deposit.depositAddress);
         const tokenMintPubkey = new PublicKey(deposit.tokenMint || deposit.tokenAddress);
-        
-        // We need to derive the deposit seed from somewhere
-        // For now, we'll try to use a simple approach
-        // The deposit seed should be stored or derivable
-        // Since we don't have the exact seed, we'll need to iterate through possible seeds
-        // This is a limitation - in production, you'd store the seed
-        
-        // Build the withdraw transaction
+
+        // Get the deposit seed from localStorage or fetch from contract
+        let depositSeed: string | null = deposit.depositSeed || null;
+
+        if (!depositSeed) {
+          console.log('[HomeScreen] Deposit seed not in localStorage, fetching from contract...');
+          try {
+            const depositAccount = await fetchDepositAccount(connection, deposit.depositAddress);
+            if (depositAccount && depositAccount.depositSeed) {
+              depositSeed = depositAccount.depositSeed;
+              console.log('[HomeScreen] Deposit seed fetched from contract:', depositSeed);
+
+              // Cache it to localStorage
+              try {
+                const storedDepositsJson = localStorage.getItem('solana_deposits');
+                const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
+                if (!storedDeposits[deposit.depositAddress]) {
+                  storedDeposits[deposit.depositAddress] = {};
+                }
+                storedDeposits[deposit.depositAddress].depositSeed = depositSeed;
+                localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
+              } catch (cacheError) {
+                console.warn('[HomeScreen] Failed to cache seed:', cacheError);
+              }
+            }
+          } catch (error) {
+            console.error('[HomeScreen] Failed to fetch deposit seed:', error);
+          }
+        }
+
+        if (!depositSeed) {
+          console.log('[HomeScreen] Deposit seed not found anywhere');
+          Alert.alert(
+            'Error',
+            'Deposit seed not found. This deposit was created before seed storage was implemented.\n\nPlease use a CLI tool to withdraw or contact support.',
+            [{ text: 'OK' }]
+          );
+          setLoading(false);
+          return;
+        }
+
+        console.log('[HomeScreen] Using deposit seed:', depositSeed);
+
+        // Build the withdraw transaction with the correct seed
         const transaction = await buildWithdrawTransaction(
           connection,
           depositorPubkey,
           depositPubkey,
           tokenMintPubkey,
-          `${deposit.lastProofTimestamp}` // Using timestamp as seed approximation
+          depositSeed // Use the actual deposit seed, not timestamp
         );
 
         // Sign and send
