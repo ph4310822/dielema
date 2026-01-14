@@ -35,7 +35,7 @@ import { createHash } from 'crypto';
 
 // Configuration
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra');
+const PROGRAM_ID = new PublicKey('2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL');
 const DLM_TOKEN_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
@@ -543,10 +543,10 @@ async function runAllTests() {
 
   // Test 5: Claim after timeout
   console.log('\n=== Test 5: Claim after timeout ===');
-  console.log('  Creating deposit with 5 second timeout...');
-  const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(5) });
+  console.log('  Creating deposit with 60 second timeout...');
+  const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
   console.log('  Waiting for timeout to expire...');
-  await sleep(6);
+  await sleep(61);
   console.log('  Timeout expired, attempting claim...');
   const result5 = await testClaim(connection, wallet, deposit5);
   if (result5) passed++; else failed++;

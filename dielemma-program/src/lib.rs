@@ -15,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
     system_instruction,
     system_program,
-    sysvar::{clock::Clock, rent::Rent, Sysvar},
+    sysvar::{clock::Clock, rent::Rent, Sysvar, SysvarId},
 };
 use spl_token::{
     instruction::{initialize_account, transfer, burn},
@@ -23,7 +23,7 @@ use spl_token::{
 };
 
 // Declare program ID
-solana_program::declare_id!("4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra");
+solana_program::declare_id!("2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
@@ -168,13 +168,33 @@ pub fn process_instruction(
             let data = &instruction_data[4..];
             let offset = &mut 0;
 
-            // Parse deposit_seed (length-prefixed string)
+            // Parse deposit_seed (length-prefixed string) with bounds checking
+            if data.len() < 4 {
+                return Err(ProgramError::InvalidInstructionData);
+            }
             let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
                 .try_into().unwrap()) as usize;
             *offset += 4;
-            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+            if seed_len > MAX_DEPOSIT_SEED_LENGTH || *offset + seed_len > data.len() {
+                msg!("Invalid deposit seed length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            let deposit_seed_bytes = &data[*offset..*offset + seed_len];
+            let deposit_seed = std::str::from_utf8(deposit_seed_bytes)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            // Additional validation: ensure byte length is within bounds after UTF-8 conversion
+            if deposit_seed_bytes.len() > MAX_DEPOSIT_SEED_LENGTH {
+                msg!("Deposit seed bytes exceed maximum length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
             *offset += seed_len;
+
+            // Verify remaining data has enough bytes for receiver (32) + amount (8) + timeout (8) = 48
+            if *offset + 48 > data.len() {
+                msg!("Invalid instruction data: insufficient bytes");
+                return Err(ProgramError::InvalidInstructionData);
+            }
 
             // Parse receiver (32 bytes)
             let receiver_bytes = &data[*offset..*offset + 32];
@@ -198,11 +218,25 @@ pub fn process_instruction(
             let data = &instruction_data[4..];
             let offset = &mut 0;
 
+            if data.len() < 4 {
+                return Err(ProgramError::InvalidInstructionData);
+            }
             let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
                 .try_into().unwrap()) as usize;
             *offset += 4;
-            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+            if seed_len > MAX_DEPOSIT_SEED_LENGTH || *offset + seed_len > data.len() {
+                msg!("Invalid deposit seed length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            let deposit_seed_bytes = &data[*offset..*offset + seed_len];
+            let deposit_seed = std::str::from_utf8(deposit_seed_bytes)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            // Additional validation: ensure byte length is within bounds after UTF-8 conversion
+            if deposit_seed_bytes.len() > MAX_DEPOSIT_SEED_LENGTH {
+                msg!("Deposit seed bytes exceed maximum length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
 
             process_proof_of_life(program_id, accounts, deposit_seed)
         }
@@ -211,11 +245,25 @@ pub fn process_instruction(
             let data = &instruction_data[4..];
             let offset = &mut 0;
 
+            if data.len() < 4 {
+                return Err(ProgramError::InvalidInstructionData);
+            }
             let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
                 .try_into().unwrap()) as usize;
             *offset += 4;
-            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+            if seed_len > MAX_DEPOSIT_SEED_LENGTH || *offset + seed_len > data.len() {
+                msg!("Invalid deposit seed length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            let deposit_seed_bytes = &data[*offset..*offset + seed_len];
+            let deposit_seed = std::str::from_utf8(deposit_seed_bytes)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            // Additional validation: ensure byte length is within bounds after UTF-8 conversion
+            if deposit_seed_bytes.len() > MAX_DEPOSIT_SEED_LENGTH {
+                msg!("Deposit seed bytes exceed maximum length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
 
             process_withdraw(program_id, accounts, deposit_seed)
         }
@@ -224,11 +272,25 @@ pub fn process_instruction(
             let data = &instruction_data[4..];
             let offset = &mut 0;
 
+            if data.len() < 4 {
+                return Err(ProgramError::InvalidInstructionData);
+            }
             let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
                 .try_into().unwrap()) as usize;
             *offset += 4;
-            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+            if seed_len > MAX_DEPOSIT_SEED_LENGTH || *offset + seed_len > data.len() {
+                msg!("Invalid deposit seed length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            let deposit_seed_bytes = &data[*offset..*offset + seed_len];
+            let deposit_seed = std::str::from_utf8(deposit_seed_bytes)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            // Additional validation: ensure byte length is within bounds after UTF-8 conversion
+            if deposit_seed_bytes.len() > MAX_DEPOSIT_SEED_LENGTH {
+                msg!("Deposit seed bytes exceed maximum length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
 
             process_claim(program_id, accounts, deposit_seed)
         }
@@ -237,11 +299,25 @@ pub fn process_instruction(
             let data = &instruction_data[4..];
             let offset = &mut 0;
 
+            if data.len() < 4 {
+                return Err(ProgramError::InvalidInstructionData);
+            }
             let seed_len = u32::from_le_bytes(data[*offset..*offset + 4]
                 .try_into().unwrap()) as usize;
             *offset += 4;
-            let deposit_seed = std::str::from_utf8(&data[*offset..*offset + seed_len])
+            if seed_len > MAX_DEPOSIT_SEED_LENGTH || *offset + seed_len > data.len() {
+                msg!("Invalid deposit seed length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            let deposit_seed_bytes = &data[*offset..*offset + seed_len];
+            let deposit_seed = std::str::from_utf8(deposit_seed_bytes)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            // Additional validation: ensure byte length is within bounds after UTF-8 conversion
+            if deposit_seed_bytes.len() > MAX_DEPOSIT_SEED_LENGTH {
+                msg!("Deposit seed bytes exceed maximum length");
+                return Err(ProgramError::InvalidInstructionData);
+            }
 
             process_close_account(program_id, accounts, deposit_seed)
         }
@@ -269,10 +345,22 @@ fn process_deposit(
     let system_program = next_account_info(account_info_iter)?;
     let rent_account = next_account_info(account_info_iter)?;
 
+    // Verify depositor is signer
+    if !depositor.is_signer {
+        msg!("Depositor must sign the transaction");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
     // Verify system program
     if system_program.key != &system_program::id() {
         msg!("Invalid system program");
         return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Verify rent sysvar
+    if rent_account.key != &Rent::id() {
+        msg!("Invalid rent sysvar");
+        return Err(ProgramError::InvalidAccountData);
     }
 
     // Verify token program
@@ -280,6 +368,46 @@ fn process_deposit(
         msg!("Invalid token program");
         return Err(ProgramError::IncorrectProgramId);
     }
+
+    // CRITICAL: Verify only DLM tokens can be deposited
+    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if token_mint.key != &official_dlm_mint {
+        msg!("Only DLM tokens can be deposited");
+        msg!("Expected: {}", OFFICIAL_DLM_TOKEN_MINT);
+        msg!("Got: {}", token_mint.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate deposit amount
+    const MAX_DEPOSIT_AMOUNT: u64 = 100_000_000_000_000_000; // 100 million DLM (adjust as needed)
+    if amount == 0 {
+        msg!("Deposit amount must be greater than 0");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    if amount > MAX_DEPOSIT_AMOUNT {
+        msg!("Deposit amount exceeds maximum allowed");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Validate timeout range (1 minute to 10 years)
+    const MIN_TIMEOUT_SECONDS: u64 = 60; // 1 minute
+    const MAX_TIMEOUT_SECONDS: u64 = 315360000; // 10 years
+    if timeout_seconds < MIN_TIMEOUT_SECONDS || timeout_seconds > MAX_TIMEOUT_SECONDS {
+        msg!("Timeout must be between {} and {} seconds", MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Verify token account ownership
+    let token_account_data = depositor_token_account.data.borrow();
+    let token_account_state = TokenAccount::unpack(&token_account_data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if token_account_state.owner != *depositor.key {
+        msg!("Token account must be owned by depositor");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    drop(token_account_data); // Explicitly drop the borrow before we need to borrow again
 
     // Get clock for timestamp
     let clock = Clock::get()?;
@@ -508,6 +636,18 @@ fn process_proof_of_life(
     // Amount to burn: 1 DLM token (9 decimals)
     let burn_amount: u64 = 1_000_000_000;
 
+    // Verify sufficient DLM balance before burning
+    let token_account_data = depositor_token_account.data.borrow();
+    let token_account_state = TokenAccount::unpack(&token_account_data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    drop(token_account_data);
+
+    if token_account_state.amount < burn_amount {
+        msg!("Insufficient DLM balance for proof-of-life");
+        msg!("Required: {}, Available: {}", burn_amount, token_account_state.amount);
+        return Err(ProgramError::InsufficientFunds);
+    }
+
     // Burn directly from depositor's token account
     let burn_ix = burn(
         &spl_token::id(),
@@ -566,6 +706,14 @@ fn process_withdraw(
     // Deserialize deposit account
     let mut deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
 
+    // Verify token mint matches DLM token (defense in depth)
+    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if deposit_state.token_mint != official_dlm_mint {
+        msg!("Token mint mismatch: expected DLM tokens");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     // Verify depositor
     if deposit_state.depositor != *depositor.key {
         msg!("Only the depositor can withdraw");
@@ -577,6 +725,10 @@ fn process_withdraw(
         msg!("Deposit already withdrawn or claimed");
         return Err(ProgramError::InvalidAccountData);
     }
+
+    // CRITICAL: Mark as closed BEFORE transfer to prevent race condition/double withdrawal
+    deposit_state.is_closed = true;
+    deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
 
     // Get current token balance (scoped to ensure borrow is released before we borrow again)
     let token_amount = {
@@ -611,10 +763,6 @@ fn process_withdraw(
         ]],
     )?;
 
-    // Mark as closed (now safe to borrow again)
-    deposit_state.is_closed = true;
-    deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
-
     msg!("Withdrawal successful: {} tokens", token_amount);
     Ok(())
 }
@@ -633,8 +781,16 @@ fn process_claim(
     let deposit_token_account = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
-    // Deserialize deposit account first to get depositor
-    let deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
+    // Deserialize deposit account once (mutable from start to avoid double deserialization)
+    let mut deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
+
+    // Verify token mint matches DLM token (defense in depth)
+    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if deposit_state.token_mint != official_dlm_mint {
+        msg!("Token mint mismatch: expected DLM tokens");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Derive PDA
     let (deposit_pda, _bump) = Pubkey::find_program_address(
@@ -652,6 +808,12 @@ fn process_claim(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    // Verify receiver is signer
+    if !receiver.is_signer {
+        msg!("Receiver must sign the claim transaction");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
     // Check if already closed
     if deposit_state.is_closed {
         msg!("Deposit already withdrawn or claimed");
@@ -660,6 +822,20 @@ fn process_claim(
 
     // Check if proof-of-life has expired
     let clock = Clock::get()?;
+
+    // Validate timestamp is not in the future
+    if deposit_state.last_proof_timestamp > clock.unix_timestamp {
+        msg!("Invalid last_proof_timestamp: future date detected");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate timestamp is not unreasonably old (before Solana genesis)
+    const MIN_VALID_TIMESTAMP: i64 = 1598000000; // ~August 2020
+    if deposit_state.last_proof_timestamp < MIN_VALID_TIMESTAMP {
+        msg!("Invalid last_proof_timestamp: unreasonably old date");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     let elapsed = clock.unix_timestamp - deposit_state.last_proof_timestamp;
     if elapsed < deposit_state.timeout_seconds as i64 {
         msg!(
@@ -669,6 +845,10 @@ fn process_claim(
         );
         return Err(ProgramError::InvalidAccountData);
     }
+
+    // CRITICAL: Mark as closed BEFORE transfer to prevent race condition/double claim
+    deposit_state.is_closed = true;
+    deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
 
     // Get current token balance (scoped to ensure borrow is released before we borrow again)
     let token_amount = {
@@ -702,11 +882,6 @@ fn process_claim(
             &[deposit_state.bump],
         ]],
     )?;
-
-    // Mark as closed (now safe to borrow again)
-    let mut deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
-    deposit_state.is_closed = true;
-    deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
 
     msg!("Claim successful: {} tokens transferred to receiver", token_amount);
     Ok(())
