@@ -7,6 +7,7 @@ import {
   isMobileWalletConnected,
   disconnectMobileWallet,
   signAndSendMobileTransaction,
+  signTransaction as signTransactionWrapper,
 } from './solanaMobileWallet';
 import { BUILD_CONFIG } from '../config/buildConfig';
 
@@ -325,12 +326,24 @@ export async function connectSolanaWallet(): Promise<string> {
 
   // Guard against undefined provider
   if (!provider) {
-    throw new Error(
-      'No Solana wallet found.\n\n' +
-      (BUILD_CONFIG.isAndroid || BUILD_CONFIG.isIOS
-        ? 'Mobile Wallet Adapter is not available.\n\nOptions:\n• Create a development build: npx expo run:android\n• Test on web instead: npx expo start --web'
-        : 'Please install Phantom wallet extension.')
-    );
+    if (BUILD_CONFIG.isAndroid || BUILD_CONFIG.isIOS) {
+      // On mobile, window.solana won't exist even in dev builds
+      // Provide guidance on how to connect
+      throw new Error(
+        'No Solana wallet found.\n\n' +
+        'On Android/iOS, you have two options:\n\n' +
+        '1. Use Phantom Wallet App:\n' +
+        '   • Install Phantom from app store\n' +
+        '   • Open this URL in Phantom: ' + (typeof window !== 'undefined' ? window.location.href : 'your app URL') + '\n\n' +
+        '2. Use Mobile Wallet Adapter:\n' +
+        '   • Currently not available in this build\n' +
+        '   • Requires native Android module setup\n\n' +
+        '3. For development:\n' +
+        '   • Test on web: npx expo start --web\n' +
+        '   • Install Phantom browser extension'
+      );
+    }
+    throw new Error('No Solana wallet found. Please install Phantom wallet extension.');
   }
 
   console.log('[wallet] Calling provider.connect()...');
@@ -417,7 +430,7 @@ export async function disconnectSolanaWallet(): Promise<void> {
 /**
  * Send transaction using Solana wallet
  */
-export async function sendSolanaTransaction(transaction: Transaction): Promise<string> {
+export async function sendSolanaTransaction(transaction: Transaction, network: Network = 'mainnet'): Promise<string> {
   // Use Mobile Wallet Adapter on Android if connected via MWA
   if (BUILD_CONFIG.isAndroid && isMobileWalletConnected()) {
     console.log('[wallet] Sending transaction via Mobile Wallet Adapter');
@@ -431,7 +444,7 @@ export async function sendSolanaTransaction(transaction: Transaction): Promise<s
 
   const provider = (window as any).solana;
 
-  const connection = new Connection(getRpcUrl('solana', 'devnet'), 'confirmed');
+  const connection = new Connection(getRpcUrl('solana', network), 'confirmed');
 
   console.log('[wallet] Sending transaction to Phantom...');
 
@@ -446,8 +459,8 @@ export async function sendSolanaTransaction(transaction: Transaction): Promise<s
   console.log('[wallet] Blockhash:', transaction.recentBlockhash.slice(0, 8) + '...');
 
   // Step 1: Sign the transaction (without sending)
-  console.log('[wallet] Requesting signature from Phantom...');
-  const signedTransaction = await provider.signTransaction(transaction);
+  console.log('[wallet] Requesting signature from wallet...');
+  const signedTransaction = await signTransactionWrapper(transaction, provider);
   console.log('[wallet] Transaction signed successfully');
 
   // Step 2: Simulate the transaction to catch errors before broadcasting

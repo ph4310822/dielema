@@ -42,7 +42,7 @@ dielemma/
 
 | Chain | Status | Contract Address | Network |
 |-------|--------|------------------|---------|
-| Solana | ✅ Deployed | `4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra` | Devnet |
+| Solana | ✅ Deployed | `3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA` | Devnet |
 | BSC | 🚀 Ready | *Deploy to get address* | Testnet/Mainnet |
 | Ethereum | 🚀 Ready | *Deploy to get address* | Sepolia |
 | Polygon | 🚀 Ready | *Deploy to get address* | Amoy |
@@ -79,7 +79,7 @@ DEFAULT_NETWORK=testnet
 
 # Solana Configuration
 SOLANA_RPC_URL=https://api.devnet.solana.com
-SOLANA_PROGRAM_ID=4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra
+SOLANA_PROGRAM_ID=3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
 
 # BSC Configuration (after deployment)
 BSC_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545
@@ -142,7 +142,8 @@ The API will be available at `http://localhost:3000`
 
 ```bash
 cd client
-npm run dev
+npx expo start --web
+npx expo run:android
 ```
 
 ### 6. Build Android App
@@ -383,7 +384,8 @@ MIT License - see LICENSE file for details
 - [Ethers.js Documentation](https://docs.ethers.org/)
 
 
-Solana contract deployed on devnet:
-Program ID: 4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra
-You can view it on Solana Explorer:
-https://explorer.solana.com/address/4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra?cluster=devnet
+## Solana contract deployed on devnet:
+Program ID: 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
+
+## Solana contract deployed on mainnet:
+Program ID: 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA

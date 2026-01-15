@@ -3,7 +3,7 @@
  * This ensures consistent API across different blockchain networks
  */
 
-import { DepositRequest, ProofOfLifeRequest, WithdrawRequest, ClaimRequest, GetDepositRequest, TransactionResponse, DepositInfoResponse } from '../../shared/types';
+import { DepositRequest, ProofOfLifeRequest, WithdrawRequest, ClaimRequest, GetDepositRequest, TransactionResponse, DepositInfoResponse, GetBlockhashRequest, BlockhashResponse, GetTokenBalancesRequest, TokenBalancesResponse, GetClaimableRequest } from '../../shared/types';
 
 export interface IChainService {
   /**
@@ -40,6 +40,21 @@ export interface IChainService {
    * Get all deposits for a user
    */
   getUserDeposits(user: string): Promise<DepositInfoResponse>;
+
+  /**
+   * Get claimable deposits for a receiver
+   */
+  getClaimableDeposits(request: GetClaimableRequest): Promise<DepositInfoResponse>;
+
+  /**
+   * Get latest blockhash for transaction building
+   */
+  getLatestBlockhash(request: GetBlockhashRequest): Promise<BlockhashResponse>;
+
+  /**
+   * Get token balances for a wallet
+   */
+  getTokenBalances(request: GetTokenBalancesRequest): Promise<TokenBalancesResponse>;
 
   /**
    * Get health/status of the chain connection

@@ -15,6 +15,11 @@ import {
   TransactionResponse,
   DepositInfoResponse,
   DepositAccount,
+  GetBlockhashRequest,
+  BlockhashResponse,
+  GetTokenBalancesRequest,
+  TokenBalancesResponse,
+  GetClaimableRequest,
 } from '../../shared/types';
 
 // Dielemma ABI - only the functions we need
@@ -390,6 +395,71 @@ export class EvmService implements IChainService {
         status: 'error',
         network: this.network,
         endpoint: this.provider._getConnection().url,
+      };
+    }
+  }
+
+  /**
+   * Get claimable deposits for a receiver (not applicable for EVM chains)
+   */
+  async getClaimableDeposits(request: GetClaimableRequest): Promise<DepositInfoResponse> {
+    // EVM chains don't have a direct claimable deposits query
+    // This would require additional contract functions or event filtering
+    return {
+      success: false,
+      error: 'Get claimable deposits not implemented for EVM chains',
+    };
+  }
+
+  /**
+   * Get latest blockhash (not applicable for EVM chains in the same way as Solana)
+   */
+  async getLatestBlockhash(request: GetBlockhashRequest): Promise<BlockhashResponse> {
+    // EVM chains don't use blockhash the same way Solana does
+    // Return the current block number instead
+    try {
+      const blockNumber = await this.provider.getBlockNumber();
+      return {
+        success: true,
+        blockhash: blockNumber.toString(),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch block number',
+      };
+    }
+  }
+
+  /**
+   * Get token balances for a wallet
+   */
+  async getTokenBalances(request: GetTokenBalancesRequest): Promise<TokenBalancesResponse> {
+    // EVM chains would need to implement ERC20 balance fetching
+    // For now, return just the native token balance
+    try {
+      const { walletAddress } = request;
+      const balance = await this.provider.getBalance(walletAddress);
+
+      return {
+        success: true,
+        balances: [
+          {
+            mint: '0x0000000000000000000000000000000000000000',
+            symbol: this.chainType === ChainType.BSC ? 'BNB' : 'ETH',
+            name: this.chainType === ChainType.BSC ? 'BNB' : 'Ethereum',
+            decimals: 18,
+            balance: Number(balance) / 1e18,
+            balanceRaw: balance.toString(),
+            uiAmount: (Number(balance) / 1e18).toFixed(4),
+            isNative: true,
+          },
+        ],
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch token balances',
       };
     }
   }

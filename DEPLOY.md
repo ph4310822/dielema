@@ -81,7 +81,7 @@ solana program show <program-id> --url devnet
 
 ## Current Program ID
 
-**Before deployment:** `4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra`
+**Before deployment:** `3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA`
 
 **After deployment:** You'll get a new program ID that needs to be updated in:
 - `backend/.env` → `SOLANA_PROGRAM_ID=<new-id>`

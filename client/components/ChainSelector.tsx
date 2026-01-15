@@ -101,8 +101,8 @@ const getFilteredChains = (): Chain[] => {
 
 const NETWORK_CONFIGS: Record<Network, { name: string; disabled: boolean; disabledReason?: string }> = {
   testnet: { name: 'Testnet', disabled: true, disabledReason: 'Coming soon' },
-  mainnet: { name: 'Mainnet', disabled: true, disabledReason: 'Coming soon' },
-  devnet: { name: 'Devnet', disabled: false },
+  mainnet: { name: 'Mainnet', disabled: false },
+  devnet: { name: 'Devnet', disabled: true, disabledReason: 'Use Mainnet' },
 };
 
 export default function ChainSelector({ selectedChain, selectedNetwork, onChainChange, onNetworkChange }: ChainSelectorProps) {

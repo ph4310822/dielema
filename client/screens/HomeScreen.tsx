@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   Image,
   Linking,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp, useFocusEffect } from '@react-navigation/native';
@@ -38,6 +39,8 @@ import {
   buildClaimTransaction,
   fetchDepositAccount,
   SolanaDeposit,
+  clearClaimableDepositsCache,
+  clearAllDepositsCache,
 } from '../utils/solanaProgram';
 import { getTokenMetadata } from '../utils/solanaTokens';
 
@@ -61,6 +64,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
   const [claimableDeposits, setClaimableDeposits] = useState<Deposit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'deposits' | 'claimable'>('deposits');
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   useEffect(() => {
     if (connected && walletAddress) {
@@ -125,6 +129,11 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
       // #endregion
       console.log('[HomeScreen] Wallet address received:', address);
 
+      // Clear cache to ensure fresh data on new connection
+      if (isSolana(chain)) {
+        clearAllDepositsCache();
+      }
+
       setWalletAddress(address);
       setConnected(true);
       // #region agent log
@@ -158,35 +167,12 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
         const connection = getConnection(network);
         const solanaDeposits = await getUserDeposits(connection, address);
 
-        // Load stored deposit seeds from localStorage
-        let storedDeposits: Record<string, any> = {};
-        try {
-          const storedDepositsJson = localStorage.getItem('solana_deposits');
-          storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
-        } catch (error) {
-          console.error('[HomeScreen] Failed to load stored deposits:', error);
-        }
-
         // Convert SolanaDeposit to Deposit format for UI compatibility
         const formattedDeposits: Deposit[] = solanaDeposits.map((d, index) => {
           const tokenMetadata = getTokenMetadata(d.tokenMint, network);
-          const storedDeposit = storedDeposits[d.address];
 
-          // Prioritize on-chain seed, fall back to localStorage
-          const depositSeed = d.depositSeed || storedDeposit?.depositSeed;
-
-          // If we got the seed from on-chain, cache it to localStorage
-          if (d.depositSeed && !storedDeposit?.depositSeed) {
-            try {
-              if (!storedDeposits[d.address]) {
-                storedDeposits[d.address] = {};
-              }
-              storedDeposits[d.address].depositSeed = d.depositSeed;
-              localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
-            } catch (cacheError) {
-              console.warn('[HomeScreen] Failed to cache deposit seed:', cacheError);
-            }
-          }
+          // Use on-chain seed
+          const depositSeed = d.depositSeed;
 
           return {
             depositIndex: index,
@@ -284,29 +270,16 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
       const depositPubkey = new PublicKey(deposit.depositAddress);
       const tokenMintPubkey = new PublicKey(deposit.tokenMint || deposit.tokenAddress);
 
-      // Get the deposit seed from localStorage or fetch from contract
+      // Get the deposit seed
       let depositSeed: string | null = deposit.depositSeed || null;
 
       if (!depositSeed) {
-        console.log('[HomeScreen] Deposit seed not in localStorage, fetching from contract...');
+        console.log('[HomeScreen] Deposit seed not found, fetching from contract...');
         try {
           const depositAccount = await fetchDepositAccount(connection, deposit.depositAddress);
           if (depositAccount && depositAccount.depositSeed) {
             depositSeed = depositAccount.depositSeed;
             console.log('[HomeScreen] Deposit seed fetched from contract:', depositSeed);
-
-            // Cache it to localStorage
-            try {
-              const storedDepositsJson = localStorage.getItem('solana_deposits');
-              const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
-              if (!storedDeposits[deposit.depositAddress]) {
-                storedDeposits[deposit.depositAddress] = {};
-              }
-              storedDeposits[deposit.depositAddress].depositSeed = depositSeed;
-              localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
-            } catch (cacheError) {
-              console.warn('[HomeScreen] Failed to cache seed:', cacheError);
-            }
           }
         } catch (error) {
           console.error('[HomeScreen] Failed to fetch deposit seed:', error);
@@ -314,7 +287,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
       }
 
       if (!depositSeed) {
-        console.log('[HomeScreen] Deposit seed not found anywhere');
+        console.log('[HomeScreen] Deposit seed not found');
         Alert.alert(
           'Error',
           'Deposit seed not found. This deposit was created before seed storage was implemented.\n\nPlease use a CLI tool to claim or contact support.',
@@ -341,8 +314,9 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
 
       console.log('[HomeScreen] Claim successful:', signature);
       Alert.alert('Success!', `Claimed! Transaction: ${signature}`);
-      
-      // Refresh both lists
+
+      // Clear cache and refresh both lists
+      clearClaimableDepositsCache(walletAddress);
       await fetchUserDeposits(walletAddress);
       await fetchClaimableDeposits(walletAddress);
     } catch (error: any) {
@@ -385,29 +359,16 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
         const depositPubkey = new PublicKey(deposit.depositAddress);
         const tokenMintPubkey = new PublicKey(deposit.tokenMint || deposit.tokenAddress);
 
-        // Get the deposit seed from localStorage or fetch from contract
+        // Get the deposit seed from contract
         let depositSeed: string | null = deposit.depositSeed || null;
 
         if (!depositSeed) {
-          console.log('[HomeScreen] Deposit seed not in localStorage, fetching from contract...');
+          console.log('[HomeScreen] Deposit seed not found, fetching from contract...');
           try {
             const depositAccount = await fetchDepositAccount(connection, deposit.depositAddress);
             if (depositAccount && depositAccount.depositSeed) {
               depositSeed = depositAccount.depositSeed;
               console.log('[HomeScreen] Deposit seed fetched from contract:', depositSeed);
-
-              // Cache it to localStorage
-              try {
-                const storedDepositsJson = localStorage.getItem('solana_deposits');
-                const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
-                if (!storedDeposits[deposit.depositAddress]) {
-                  storedDeposits[deposit.depositAddress] = {};
-                }
-                storedDeposits[deposit.depositAddress].depositSeed = depositSeed;
-                localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
-              } catch (cacheError) {
-                console.warn('[HomeScreen] Failed to cache seed:', cacheError);
-              }
             }
           } catch (error) {
             console.error('[HomeScreen] Failed to fetch deposit seed:', error);
@@ -415,7 +376,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
         }
 
         if (!depositSeed) {
-          console.log('[HomeScreen] Deposit seed not found anywhere');
+          console.log('[HomeScreen] Deposit seed not found');
           Alert.alert(
             'Error',
             'Deposit seed not found. This deposit was created before seed storage was implemented.\n\nPlease use a CLI tool to withdraw or contact support.',
@@ -531,7 +492,7 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
             <View style={styles.iconContainer}>
               <Image source={require('../assets/icon.png')} style={styles.logo} />
             </View>
-            <Text style={styles.projectName}>Dielema</Text>
+            <Text style={styles.projectName}>死了么 Dielema</Text>
             <Text style={styles.welcomeTitle}>{t.home.welcomeTitle}</Text>
             <Text style={styles.welcomeSubtitle}>
               {t.home.welcomeSubtitle}
@@ -539,6 +500,23 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
             <Text style={styles.welcomeDescription}>
               {t.home.welcomeDescription}
             </Text>
+
+
+            <TouchableOpacity style={styles.connectButton} onPress={connectWallet}>
+              <Text style={styles.connectButtonText}>{t.home.connectWallet}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.buyDLMButtonSmall}
+              onPress={() => Linking.openURL('https://pump.fun/coin/dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump')}
+            >
+              <Text style={styles.buyDLMButtonSmallText}>{t.home.buyDLM}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.howItWorksLink} onPress={() => setShowHowItWorks(true)}>
+              <Text style={styles.howItWorksLinkText}>{t.home.howItWorks}</Text>
+              <Ionicons name="information-circle-outline" size={16} color="#50d56b" />
+            </TouchableOpacity>
 
             {/* Social Links */}
             <View style={styles.socialLinksContainer}>
@@ -557,10 +535,6 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
                 <Text style={styles.socialButtonText}>@dielema_icu</Text>
               </TouchableOpacity>
             </View>
-
-            <TouchableOpacity style={styles.connectButton} onPress={connectWallet}>
-              <Text style={styles.connectButtonText}>{t.home.connectWallet}</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.connectedContainer}>
@@ -716,6 +690,33 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
           <ActivityIndicator size="large" color="#50d56b" />
         </View>
       )}
+
+      {/* How It Works Modal */}
+      <Modal
+        visible={showHowItWorks}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowHowItWorks(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t.home.howItWorksTitle}</Text>
+              <TouchableOpacity onPress={() => setShowHowItWorks(false)}>
+                <Ionicons name="close" size={24} color="#636e72" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalText}>{t.home.howItWorksContent}</Text>
+            <TouchableOpacity
+              style={styles.buyDLMButton}
+              onPress={() => Linking.openURL('https://pump.fun/coin/dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump')}
+            >
+              <Ionicons name="cart" size={20} color="#fff" />
+              <Text style={styles.buyDLMButtonText}>{t.home.buyDLM}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -756,15 +757,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   iconContainer: {
-    width: 140,
-    height: 140,
+    width: 120,
+    height: 120,
     borderRadius: 70,
     backgroundColor: '#e8f8ec',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginTop: 24,
   },
   logo: {
     width: 100,
@@ -780,7 +782,7 @@ const styles = StyleSheet.create({
   socialLinksContainer: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 32,
+    marginTop: 40,
   },
   socialButton: {
     flexDirection: 'row',
@@ -834,6 +836,27 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  buyDLMButtonSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6c5ce7',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+    marginTop: 12,
+    shadowColor: '#6c5ce7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buyDLMButtonSmallText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   connectedContainer: {
     flex: 1,
@@ -1057,5 +1080,75 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // How It Works link
+  howItWorksLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  howItWorksLinkText: {
+    fontSize: 14,
+    color: '#50d56b',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2d3436',
+    flex: 1,
+  },
+  modalText: {
+    fontSize: 15,
+    color: '#636e72',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  buyDLMButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#50d56b',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+    shadowColor: '#50d56b',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buyDLMButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

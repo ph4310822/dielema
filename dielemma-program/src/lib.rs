@@ -21,15 +21,19 @@ use spl_token::{
     instruction::{initialize_account, transfer, burn},
     state::Account as TokenAccount,
 };
+use spl_token_2022::{
+    extension::ExtensionType,
+    state::{Account as TokenAccount2022, Mint as MintState},
+};
 
 // Declare program ID
-solana_program::declare_id!("2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL");
+solana_program::declare_id!("3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
 
 /// Official DLM token mint address (hardcoded)
-pub const OFFICIAL_DLM_TOKEN_MINT: &str = "9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm";
+pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
 
 /// Instruction types for the Dielemma program
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -142,7 +146,7 @@ pub const DEPOSIT_ACCOUNT_SIZE: usize = 32 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 4 + M
 pub const DEPOSIT_SEED_PREFIX: &[u8] = b"deposit";
 pub const TOKEN_ACCOUNT_SEED_PREFIX: &[u8] = b"token_account";
 
-/// Entry point for the Dielemma program
+// Entry point for the Dielemma program
 entrypoint!(process_instruction);
 
 pub fn process_instruction(
@@ -363,20 +367,12 @@ fn process_deposit(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Verify token program
-    if token_program.key != &spl_token::id() {
+    // Verify token program - accept both legacy Token and Token-2022
+    let is_token2022 = token_program.key == &spl_token_2022::id();
+    let is_legacy_token = token_program.key == &spl_token::id();
+    if !is_token2022 && !is_legacy_token {
         msg!("Invalid token program");
         return Err(ProgramError::IncorrectProgramId);
-    }
-
-    // CRITICAL: Verify only DLM tokens can be deposited
-    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    if token_mint.key != &official_dlm_mint {
-        msg!("Only DLM tokens can be deposited");
-        msg!("Expected: {}", OFFICIAL_DLM_TOKEN_MINT);
-        msg!("Got: {}", token_mint.key);
-        return Err(ProgramError::InvalidAccountData);
     }
 
     // Validate deposit amount
@@ -591,8 +587,10 @@ fn process_proof_of_life(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // Verify token program
-    if token_program.key != &spl_token::id() {
+    // Verify token program - accept both legacy Token and Token-2022
+    let is_token2022 = token_program.key == &spl_token_2022::id();
+    let is_legacy_token = token_program.key == &spl_token::id();
+    if !is_token2022 && !is_legacy_token {
         msg!("Invalid token program");
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -633,8 +631,8 @@ fn process_proof_of_life(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Amount to burn: 1 DLM token (9 decimals)
-    let burn_amount: u64 = 1_000_000_000;
+    // Amount to burn: 1 DLM token (6 decimals)
+    let burn_amount: u64 = 1_000_000;
 
     // Verify sufficient DLM balance before burning
     let token_account_data = depositor_token_account.data.borrow();
@@ -693,6 +691,18 @@ fn process_withdraw(
     let deposit_token_account = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
+    // CRITICAL: Verify token account ownership and save mint for later validation
+    let token_mint = {
+        let token_account_data = depositor_token_account.data.borrow();
+        let token_account_state = TokenAccount::unpack(&token_account_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if token_account_state.owner != *depositor.key {
+            msg!("Token account must be owned by depositor");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        token_account_state.mint
+    };
+
     // Derive PDA
     let (deposit_pda, _bump) = Pubkey::find_program_address(
         &[DEPOSIT_SEED_PREFIX, depositor.key.as_ref(), deposit_seed.as_bytes()],
@@ -705,14 +715,6 @@ fn process_withdraw(
 
     // Deserialize deposit account
     let mut deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
-
-    // Verify token mint matches DLM token (defense in depth)
-    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    if deposit_state.token_mint != official_dlm_mint {
-        msg!("Token mint mismatch: expected DLM tokens");
-        return Err(ProgramError::InvalidAccountData);
-    }
 
     // Verify depositor
     if deposit_state.depositor != *depositor.key {
@@ -729,6 +731,14 @@ fn process_withdraw(
     // CRITICAL: Mark as closed BEFORE transfer to prevent race condition/double withdrawal
     deposit_state.is_closed = true;
     deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
+
+    // Verify destination token account matches deposit mint
+    if token_mint != deposit_state.token_mint {
+        msg!("Destination token account mint does not match deposit mint");
+        msg!("Expected: {}", deposit_state.token_mint);
+        msg!("Got: {}", token_mint);
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Get current token balance (scoped to ensure borrow is released before we borrow again)
     let token_amount = {
@@ -781,16 +791,20 @@ fn process_claim(
     let deposit_token_account = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
+    // CRITICAL: Verify token account ownership and save mint for later validation
+    let token_mint = {
+        let token_account_data = receiver_token_account.data.borrow();
+        let token_account_state = TokenAccount::unpack(&token_account_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        if token_account_state.owner != *receiver.key {
+            msg!("Token account must be owned by receiver");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        token_account_state.mint
+    };
+
     // Deserialize deposit account once (mutable from start to avoid double deserialization)
     let mut deposit_state = DepositAccount::try_from_slice(&deposit_account.data.borrow())?;
-
-    // Verify token mint matches DLM token (defense in depth)
-    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    if deposit_state.token_mint != official_dlm_mint {
-        msg!("Token mint mismatch: expected DLM tokens");
-        return Err(ProgramError::InvalidAccountData);
-    }
 
     // Derive PDA
     let (deposit_pda, _bump) = Pubkey::find_program_address(
@@ -849,6 +863,14 @@ fn process_claim(
     // CRITICAL: Mark as closed BEFORE transfer to prevent race condition/double claim
     deposit_state.is_closed = true;
     deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
+
+    // Verify destination token account matches deposit mint
+    if token_mint != deposit_state.token_mint {
+        msg!("Destination token account mint does not match deposit mint");
+        msg!("Expected: {}", deposit_state.token_mint);
+        msg!("Got: {}", token_mint);
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Get current token balance (scoped to ensure borrow is released before we borrow again)
     let token_amount = {
@@ -916,6 +938,12 @@ fn process_close_account(
     // Verify authority (must be depositor or receiver)
     if deposit_state.depositor != *authority.key && deposit_state.receiver != *authority.key {
         msg!("Only depositor or receiver can close the account");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Verify authority is signer
+    if !authority.is_signer {
+        msg!("Authority must sign the transaction");
         return Err(ProgramError::MissingRequiredSignature);
     }
 

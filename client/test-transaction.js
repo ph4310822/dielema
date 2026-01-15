@@ -18,7 +18,7 @@ const {
 } = require('@solana/spl-token');
 
 // Configuration
-const PROGRAM_ID = new PublicKey('4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra');
+const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
 

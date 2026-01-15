@@ -1,6 +1,6 @@
 # Dielemma Smart Contract - Comprehensive Security Audit Report
 
-**Program ID:** `2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL`
+**Program ID:** `3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA`
 **Audit Date:** 2025-01-14
 **Contract Version:** 0.1.0
 **Framework:** Solana + Rust
@@ -715,7 +715,7 @@ The Dielemma contract demonstrates **solid fundamental security practices** with
 **Functional Tests:** ✅ 7/7 passed (100%)
 **Security Tests:** ✅ 3/3 passed (100%)
 **Build Status:** ✅ Compiles without errors
-**Deployment:** ✅ Deployed to devnet (Program ID: 2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL)
+**Deployment:** ✅ Deployed to devnet (Program ID: 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA)
 
 **Recommendation:** The contract is now **READY FOR MAINNET DEPLOYMENT**. All HIGH and MEDIUM severity issues have been resolved, verified through comprehensive testing, and deployed to devnet for final validation. Consider a professional third-party audit before handling significant value, but the contract is now fundamentally secure.
 
@@ -775,7 +775,7 @@ Used **OWASP Risk Rating Methodology**:
 - **External Programs:** System Program, SPL Token Program
 
 ### E. Deployment Information
-- **Program ID:** `2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL`
+- **Program ID:** `3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA`
 - **Current Deployment:** Devnet
 - **Deployment Date:** 2025-01-14
 - **Program Size:** 152,760 bytes

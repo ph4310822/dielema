@@ -9,7 +9,7 @@ import { Chain, Network } from './types';
 
 export default function App() {
   const [chain, setChain] = useState<Chain>('solana');
-  const [network, setNetwork] = useState<Network>('devnet');
+  const [network, setNetwork] = useState<Network>('mainnet');
 
   useEffect(() => {
     console.log('[App] Mounted');

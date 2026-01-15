@@ -4,8 +4,11 @@
 seeds = false
 skip-lint = false
 
+[programs.devnet]
+dielemma_program = "3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA"
+
 [programs.localnet]
-dielemma_program = "2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL"
+dielemma_program = "3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA"
 
 [registry]
 url = "https://api.apr.dev"

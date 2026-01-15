@@ -4,7 +4,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = '2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL';
+const PROGRAM_ID = '3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA';
 
 async function main() {
   const connection = new Connection(RPC_URL, 'confirmed');

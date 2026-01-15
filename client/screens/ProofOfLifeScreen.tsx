@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/native';
@@ -23,7 +24,6 @@ import { useLanguage } from '../i18n/LanguageContext';
 import {
   checkWalletNetwork,
   sendEVMTransaction,
-  sendSolanaTransaction,
   isSolana,
   isEVM,
 } from '../utils/wallet';
@@ -32,6 +32,11 @@ import {
   buildProofOfLifeTransaction,
   fetchDepositAccount,
 } from '../utils/solanaProgram';
+import {
+  isMobileWalletConnected,
+  signAndSendMobileTransaction,
+} from '../utils/solanaMobileWallet';
+import { BUILD_CONFIG } from '../config/buildConfig';
 
 type ProofOfLifeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProofOfLife'>;
 
@@ -78,8 +83,8 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
         // Import Solana token helper
         const { getTokenBalance } = require('../utils/solanaTokens');
 
-        // DLM token mint address on Solana devnet
-        const dlmMintAddress = '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm';
+        // DLM token mint address (mainnet)
+        const dlmMintAddress = 'dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump';
 
         // Get DLM balance
         const dlmBalance = await getTokenBalance(walletAddress, dlmMintAddress, network);
@@ -94,7 +99,13 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
             'You need at least 1 DLM token to submit proof of life on Solana.\n\nCurrent balance: ' +
               dlmBalance.toString() +
               ' DLM',
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
+            [
+              { text: 'Cancel', onPress: () => navigation.goBack(), style: 'cancel' },
+              {
+                text: 'Buy $DLM',
+                onPress: () => Linking.openURL('https://pump.fun/coin/dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump')
+              },
+            ]
           );
           return;
         }
@@ -133,7 +144,13 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
           'You need at least 1 DLM token to submit proof of life.\n\nCurrent balance: ' +
             balanceResult.formatted +
             ' DLM',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
+          [
+            { text: 'Cancel', onPress: () => navigation.goBack(), style: 'cancel' },
+            {
+              text: 'Buy $DLM',
+              onPress: () => Linking.openURL('https://pump.fun/coin/dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump')
+            },
+          ]
         );
         return;
       }
@@ -223,44 +240,17 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
 
         console.log('[ProofOfLife] 2. connection instructed');
 
-        // Get the deposit seed from localStorage or fetch from contract
+        // Fetch deposit seed from contract
+        console.log('[ProofOfLife] Fetching deposit seed from contract...');
         let depositSeed: string | null = null;
         try {
-          const storedDepositsJson = localStorage.getItem('solana_deposits');
-          console.log('[ProofOfLife] 3. storedDepositsJson: ', storedDepositsJson);
-          const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
-          const storedDeposit = storedDeposits[depositAddress];
-          depositSeed = storedDeposit?.depositSeed;
-        } catch (error) {
-          console.error('[ProofOfLife] Failed to load stored deposit seed:', error);
-        }
-
-        // If not in localStorage, try fetching from contract
-        if (!depositSeed) {
-          console.log('[ProofOfLife] 4. deposit seed not found in localStorage, fetching from contract...');
-          try {
-            const depositAccount = await fetchDepositAccount(connection, depositAddress);
-            if (depositAccount && depositAccount.depositSeed) {
-              depositSeed = depositAccount.depositSeed;
-              console.log('[ProofOfLife] 5. deposit seed fetched from contract:', depositSeed);
-
-              // Store it in localStorage for future use
-              try {
-                const storedDepositsJson = localStorage.getItem('solana_deposits');
-                const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
-                if (!storedDeposits[depositAddress]) {
-                  storedDeposits[depositAddress] = {};
-                }
-                storedDeposits[depositAddress].depositSeed = depositSeed;
-                localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
-                console.log('[ProofOfLife] 6. deposit seed cached to localStorage');
-              } catch (cacheError) {
-                console.warn('[ProofOfLife] Failed to cache seed to localStorage:', cacheError);
-              }
-            }
-          } catch (error) {
-            console.error('[ProofOfLife] Failed to fetch deposit seed from contract:', error);
+          const depositAccount = await fetchDepositAccount(connection, depositAddress);
+          if (depositAccount && depositAccount.depositSeed) {
+            depositSeed = depositAccount.depositSeed;
+            console.log('[ProofOfLife] Deposit seed fetched from contract:', depositSeed);
           }
+        } catch (error) {
+          console.error('[ProofOfLife] Failed to fetch deposit seed from contract:', error);
         }
 
         if (!depositSeed) {
@@ -295,9 +285,62 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
         );
         console.log('[ProofOfLife] Transaction built successfully');
 
-        // Sign and send
-        console.log('[ProofOfLife] Calling sendSolanaTransaction...');
-        const signature = await sendSolanaTransaction(transaction);
+        // Use Mobile Wallet Adapter on Android, window.solana on web/iOS
+        let signature: string;
+        let blockhash: string;
+        let lastValidBlockHeight: number;
+
+        console.log('[ProofOfLife] Platform check:', BUILD_CONFIG.isAndroid ? 'Android' : 'Other');
+        console.log('[ProofOfLife] Wallet connected:', isMobileWalletConnected());
+
+        if (BUILD_CONFIG.isAndroid && isMobileWalletConnected()) {
+          console.log('[ProofOfLife] Using Mobile Wallet Adapter (Android)');
+          console.log('[ProofOfLife] Sending transaction via MWA...');
+
+          try {
+            // MWA handles both signing and sending
+            signature = await signAndSendMobileTransaction(transaction);
+            console.log('[ProofOfLife] Transaction sent via MWA, signature:', signature);
+          } catch (error: any) {
+            console.error('[ProofOfLife] MWA transaction failed:', error);
+            throw error;
+          }
+
+          // Get blockhash for confirmation after sending
+          const latest = await connection.getLatestBlockhash();
+          blockhash = latest.blockhash;
+          lastValidBlockHeight = latest.lastValidBlockHeight;
+        } else {
+          console.log('[ProofOfLife] Using Phantom wallet (web/iOS)');
+
+          // Import sendSolanaTransaction for non-MWA platforms
+          const { sendSolanaTransaction } = await import('../utils/wallet');
+
+          // Sign and send via Phantom
+          signature = await sendSolanaTransaction(transaction, network);
+          console.log('[ProofOfLife] Transaction sent via Phantom, signature:', signature);
+
+          // Get blockhash for confirmation
+          const latest = await connection.getLatestBlockhash();
+          blockhash = latest.blockhash;
+          lastValidBlockHeight = latest.lastValidBlockHeight;
+        }
+
+        // Confirm transaction
+        console.log('[ProofOfLife] Confirming transaction...');
+        const confirmation = await connection.confirmTransaction(
+          {
+            signature,
+            blockhash,
+            lastValidBlockHeight,
+          },
+          'confirmed'
+        );
+
+        if (confirmation.value.err) {
+          console.error('[ProofOfLife] Transaction failed:', confirmation.value.err);
+          throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+        }
 
         console.log('[ProofOfLife] Solana proof submitted:', signature);
         setTxHash(signature);

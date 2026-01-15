@@ -17,6 +17,12 @@ import {
   DepositInfoResponse,
   DepositAccount,
   DepositState,
+  GetBlockhashRequest,
+  BlockhashResponse,
+  GetTokenBalancesRequest,
+  TokenBalancesResponse,
+  TokenBalance,
+  GetClaimableRequest,
 } from '../../shared/types';
 
 export class SolanaService implements IChainService {
@@ -474,5 +480,172 @@ export class SolanaService implements IChainService {
       network: this.network,
       endpoint: this.connection.rpcEndpoint,
     };
+  }
+
+  async getClaimableDeposits(request: GetClaimableRequest): Promise<DepositInfoResponse> {
+    try {
+      const { receiverAddress } = request;
+      const receiverPubkey = new PublicKey(receiverAddress);
+
+      // Get all accounts owned by the program
+      const accounts = await this.connection.getProgramAccounts(this.programId, {
+        filters: [
+          { dataSize: 158 }, // Filter by data size (deposit accounts)
+          {
+            memcmp: {
+              offset: 32, // receiver is at offset 32
+              bytes: receiverPubkey.toBase58(),
+            },
+          },
+        ],
+      });
+
+      const claimableDeposits = accounts
+        .map(account => {
+          const data = account.account.data;
+          const depositor = new PublicKey(data.slice(0, 32)).toBase58();
+          const receiver = new PublicKey(data.slice(32, 64)).toBase58();
+          const tokenMint = new PublicKey(data.slice(64, 96)).toBase58();
+          const amount = data.readBigUInt64LE(96).toString();
+          const lastProofTimestamp = Number(data.readBigInt64LE(104));
+          const timeoutSeconds = Number(data.readBigUInt64LE(112));
+          const isClosed = data.readUInt8(121) === 1;
+          const depositId = account.pubkey.toBase58();
+
+          const now = Math.floor(Date.now() / 1000);
+          const elapsed = now - lastProofTimestamp;
+          const isExpired = elapsed >= timeoutSeconds;
+
+          return {
+            depositor,
+            receiver,
+            tokenAddress: tokenMint,
+            amount,
+            lastProofTimestamp,
+            timeoutSeconds,
+            isClosed,
+            depositId,
+            elapsed,
+            isExpired,
+          } as DepositAccount;
+        })
+        .filter(d => !d.isClosed && d.isExpired);
+
+      return {
+        success: true,
+        deposits: claimableDeposits,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch claimable deposits',
+      };
+    }
+  }
+
+  async getLatestBlockhash(request: GetBlockhashRequest): Promise<BlockhashResponse> {
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+
+      return {
+        success: true,
+        blockhash,
+        lastValidBlockHeight,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch latest blockhash',
+      };
+    }
+  }
+
+  async getTokenBalances(request: GetTokenBalancesRequest): Promise<TokenBalancesResponse> {
+    try {
+      const { walletAddress } = request;
+      const pubkey = new PublicKey(walletAddress);
+
+      const balances: TokenBalance[] = [];
+
+      // Common Solana tokens metadata
+      const COMMON_TOKENS: Record<string, { symbol: string; name: string; decimals: number; logoURI?: string }> = {
+        'So11111111111111111111111111111111111111112': {
+          symbol: 'SOL',
+          name: 'Solana',
+          decimals: 9,
+          logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+        },
+        'dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump': {
+          symbol: 'DLM',
+          name: 'Dielemma',
+          decimals: 6,
+        },
+        'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': {
+          symbol: 'USDC',
+          name: 'USD Coin',
+          decimals: 6,
+        },
+        'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': {
+          symbol: 'USDT',
+          name: 'Tether USD',
+          decimals: 6,
+        },
+      };
+
+      // Get SOL balance
+      const solBalance = await this.connection.getBalance(pubkey);
+      const solMint = 'So11111111111111111111111111111111111111112';
+      const solMetadata = COMMON_TOKENS[solMint] || { symbol: 'SOL', name: 'Solana', decimals: 9 };
+      balances.push({
+        mint: solMint,
+        symbol: solMetadata.symbol,
+        name: solMetadata.name,
+        decimals: solMetadata.decimals,
+        balance: solBalance / 1e9,
+        balanceRaw: solBalance.toString(),
+        uiAmount: (solBalance / 1e9).toFixed(4),
+        logoURI: solMetadata.logoURI,
+        isNative: true,
+      });
+
+      // Get all token accounts
+      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(pubkey, {
+        programId: TOKEN_PROGRAM_ID,
+      });
+
+      for (const account of tokenAccounts.value) {
+        const parsed = account.account.data.parsed;
+        const balance = BigInt(parsed.info.tokenAmount.amount);
+
+        // Only include tokens with non-zero balance
+        if (balance > 0n) {
+          const metadata = COMMON_TOKENS[parsed.info.mint] || {
+            symbol: 'TOKEN',
+            name: 'Unknown Token',
+            decimals: parsed.info.tokenAmount.decimals,
+          };
+          balances.push({
+            mint: parsed.info.mint,
+            symbol: metadata.symbol,
+            name: metadata.name,
+            decimals: parsed.info.tokenAmount.decimals,
+            balance: Number(balance) / Math.pow(10, parsed.info.tokenAmount.decimals),
+            balanceRaw: balance.toString(),
+            uiAmount: parsed.info.tokenAmount.uiAmountString || '0',
+            logoURI: metadata.logoURI,
+          });
+        }
+      }
+
+      return {
+        success: true,
+        balances,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch token balances',
+      };
+    }
   }
 }

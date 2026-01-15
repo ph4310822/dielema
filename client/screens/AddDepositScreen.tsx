@@ -34,6 +34,7 @@ import {
   getConnection,
   buildDepositTransaction,
 } from '../utils/solanaProgram';
+import { signTransaction } from '../utils/solanaMobileWallet';
 
 type AddDepositScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddDeposit'>;
 
@@ -251,20 +252,18 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
     // Get blockhash for confirmation
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
 
-    // Sign and send via Phantom
-    const provider = (window as any).solana;
-    if (!provider) {
-      throw new Error('Phantom wallet not found. Please install Phantom.');
+    // Get provider (only available on web)
+    // On Android with MWA, the wrapper will handle it without needing provider
+    let provider: any = null;
+    if (typeof window !== 'undefined') {
+      provider = (window as any).solana;
     }
 
-    // Log available methods for debugging
-    console.log('[AddDepositScreen] Available provider methods:', Object.keys(provider));
-
-    console.log('[AddDepositScreen] Sending transaction to Phantom...');
+    console.log('[AddDepositScreen] Sending transaction...');
     console.log('[AddDepositScreen] Transaction instructions:', transaction.instructions.length);
 
-    // Sign the transaction
-    const signedTransaction = await provider.signTransaction(transaction);
+    // Sign the transaction (wrapper handles Android MWA vs web/iOS)
+    const signedTransaction = await signTransaction(transaction, provider);
     console.log('[AddDepositScreen] Transaction signed');
 
     // Send the transaction ourselves
@@ -295,27 +294,9 @@ export default function AddDepositScreen({ navigation, route }: AddDepositScreen
     const [depositPDA] = deriveDepositPDA(depositorPubkey, depositSeed);
     const depositAddressStr = depositPDA.toBase58();
 
-    // Store deposit seed and address for later operations (proof of life, withdraw, claim)
-    try {
-      const storedDepositsJson = localStorage.getItem('solana_deposits');
-      const storedDeposits = storedDepositsJson ? JSON.parse(storedDepositsJson) : {};
-
-      // Store by deposit address for easy lookup
-      storedDeposits[depositAddressStr] = {
-        depositSeed,
-        depositAddress: depositAddressStr,
-        depositor: walletAddress,
-        receiver,
-        tokenMint: selectedToken.mint,
-        amount,
-        timestamp: Date.now(),
-      };
-
-      localStorage.setItem('solana_deposits', JSON.stringify(storedDeposits));
-      console.log('[AddDepositScreen] Deposit seed and address stored');
-    } catch (error) {
-      console.error('[AddDepositScreen] Failed to store deposit info:', error);
-    }
+    // Note: Deposit seed storage removed - localStorage is not available
+    // The deposit seed can be fetched from the contract when needed
+    console.log('[AddDepositScreen] Deposit created with seed:', depositSeed);
 
     Alert.alert('Success!', `Deposit created!\nSignature: ${signature}\nDeposit ID: ${depositSeed}`);
     navigation.goBack();

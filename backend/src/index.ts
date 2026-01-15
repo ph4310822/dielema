@@ -21,7 +21,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID || '4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra');
+const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID || '3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
 
 const connection = new Connection(RPC_URL, 'confirmed');
 
@@ -77,7 +77,7 @@ function deriveTokenAccountPDA(depositPDA: PublicKey): [PublicKey, number] {
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', network: 'devnet', programId: PROGRAM_ID.toBase58() });
+  res.json({ status: 'ok', network: 'mainnet-beta', programId: PROGRAM_ID.toBase58() });
 });
 
 // Create deposit instruction

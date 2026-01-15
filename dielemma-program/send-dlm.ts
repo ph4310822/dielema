@@ -17,9 +17,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Configuration
-const NETWORK = 'devnet';
+const NETWORK = 'mainnet-beta';
 const RECIPIENT = 'EjAX2KePXZEZEaADMVc5UT2SQDvBYfoP1Jyx7frignFX';
-const DLM_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
+const DLM_MINT = new PublicKey('dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump');
 const AMOUNT = 100; // Send 100 DLM tokens
 
 async function main() {
@@ -72,7 +72,7 @@ async function main() {
 
   // Transfer tokens
   console.log('\nTransferring', AMOUNT, 'DLM tokens...');
-  const amount = BigInt(AMOUNT) * BigInt(10**9); // 9 decimals
+  const amount = BigInt(AMOUNT) * BigInt(10**6); // 6 decimals
 
   const signature = await transfer(
     connection,

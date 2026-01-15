@@ -20,6 +20,10 @@ export const translations = {
       yourDeposits: 'Your Deposits',
       claimable: 'Claimable',
       disconnect: 'Disconnect',
+      howItWorks: 'How does $DLM work',
+      howItWorksTitle: 'How Dielemma Works',
+      howItWorksContent: 'Create a deposit and assign a receiver. Check in every day by burning 1 $DLM to prove you are alive. If you fail to check in within the time span, the deposit assets will be claimable by the receiver.',
+      buyDLM: 'Buy $DLM',
     },
     chainSelector: {
       title: 'Select Chain',
@@ -110,6 +114,10 @@ export const translations = {
       yourDeposits: '您的存款',
       claimable: '可提取',
       disconnect: '断开连接',
+      howItWorks: '$DLM如何运作',
+      howItWorksTitle: '死了么如何工作',
+      howItWorksContent: '创建存款并指定接收人。每天通过燃烧1枚$DLM打卡来证明您还活着。如果未能在规定时间内打卡，存款资产将被接收人提取。',
+      buyDLM: '购买$DLM',
     },
     chainSelector: {
       title: '选择链',

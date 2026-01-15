@@ -23,7 +23,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 // Program ID
-export const PROGRAM_ID = new PublicKey('2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL');
+export const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
 
 // Account sizes
 export const DEPOSIT_ACCOUNT_SIZE = 154;

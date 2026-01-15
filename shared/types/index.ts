@@ -198,6 +198,66 @@ export interface ChainConfig {
 }
 
 /**
+ * Get latest blockhash request
+ */
+export interface GetBlockhashRequest {
+  chain: ChainType;
+  network?: NetworkType;
+}
+
+/**
+ * Get latest blockhash response
+ */
+export interface BlockhashResponse {
+  success: boolean;
+  blockhash?: string;
+  lastValidBlockHeight?: number;
+  error?: string;
+}
+
+/**
+ * Get token balances request
+ */
+export interface GetTokenBalancesRequest {
+  chain: ChainType;
+  network?: NetworkType;
+  walletAddress: string;
+}
+
+/**
+ * Token balance info
+ */
+export interface TokenBalance {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balance: number;
+  balanceRaw: string;
+  uiAmount: string;
+  logoURI?: string;
+  isNative?: boolean;
+}
+
+/**
+ * Get token balances response
+ */
+export interface TokenBalancesResponse {
+  success: boolean;
+  balances?: TokenBalance[];
+  error?: string;
+}
+
+/**
+ * Get claimable deposits request
+ */
+export interface GetClaimableRequest {
+  chain: ChainType;
+  network?: NetworkType;
+  receiverAddress: string;
+}
+
+/**
  * Chain configurations map
  */
 export const CHAIN_CONFIGS: Record<ChainType, ChainConfig> = {
@@ -210,9 +270,10 @@ export const CHAIN_CONFIGS: Record<ChainType, ChainConfig> = {
       devnet: 'https://api.devnet.solana.com',
       local: 'http://localhost:8899',
     },
-    programId: '4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra',
+    programId: '3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA',
     officialTokenAddress: {
       devnet: '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm', // DLM token on Solana devnet
+      mainnet: 'dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump', // DLM token on Solana mainnet
     },
     nativeCurrency: {
       name: 'Solana',

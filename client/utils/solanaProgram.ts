@@ -14,6 +14,7 @@ import {
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   createSyncNativeInstruction,
@@ -22,7 +23,7 @@ import {
 import { Network } from '../types';
 
 // Program ID - updated to store deposit_seed in account data
-export const PROGRAM_ID = new PublicKey('4k2WMWgqn4ma9fSwgfyDuZ4HpzzJTiCbdxgAhbL6n7ra');
+export const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
 
 // Maximum deposit seed length (must match Rust)
 export const MAX_DEPOSIT_SEED_LENGTH = 32;
@@ -393,103 +394,154 @@ export function parseDepositAccount(data: Buffer, address: PublicKey): SolanaDep
   }
 }
 
+// Shared cache for ALL deposits to avoid duplicate getProgramAccounts calls
+interface AllDepositsCache {
+  data: SolanaDeposit[];
+  timestamp: number;
+  promise: Promise<SolanaDeposit[]> | null;
+}
+
+const allDepositsCache: AllDepositsCache = {
+  data: [],
+  timestamp: 0,
+  promise: null,
+};
+
+const CACHE_TTL = 30000; // 30 seconds cache
+
+/**
+ * Fetch ALL deposit accounts from the program (called once, cached)
+ * This prevents 429 errors by consolidating multiple getProgramAccounts calls
+ * Uses promise-based locking to ensure only one fetch at a time
+ */
+async function fetchAllDeposits(connection: Connection): Promise<SolanaDeposit[]> {
+  const now = Date.now();
+
+  // If we're already fetching, return the same promise
+  if (allDepositsCache.promise) {
+    console.log('[solanaProgram] Already fetching, waiting for existing promise...');
+    return allDepositsCache.promise;
+  }
+
+  // Check if cache is still valid
+  if (allDepositsCache.data.length > 0 && now - allDepositsCache.timestamp < CACHE_TTL) {
+    console.log('[solanaProgram] Using cached all deposits:', allDepositsCache.data.length);
+    return allDepositsCache.data;
+  }
+
+  // Create the fetch promise
+  console.log('[solanaProgram] Fetching ALL deposit accounts from program...');
+
+  const fetchPromise = (async () => {
+    try {
+      const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
+        commitment: 'confirmed',
+        filters: [
+          { dataSize: DEPOSIT_ACCOUNT_SIZE },
+          // NO memcmp filter - fetch ALL deposits at once
+        ],
+      });
+
+      console.log('[solanaProgram] Found total deposit accounts:', accounts.length);
+
+      const deposits: SolanaDeposit[] = [];
+
+      for (const account of accounts) {
+        const deposit = parseDepositAccount(
+          Buffer.from(account.account.data),
+          account.pubkey
+        );
+        if (deposit) {
+          deposits.push(deposit);
+        }
+      }
+
+      // Update cache
+      allDepositsCache.data = deposits;
+      allDepositsCache.timestamp = now;
+
+      console.log('[solanaProgram] Parsed all deposits:', deposits.length);
+      return deposits;
+    } catch (error) {
+      console.error('[solanaProgram] Error fetching all deposits:', error);
+
+      // Return cached data if available
+      if (allDepositsCache.data.length > 0) {
+        console.log('[solanaProgram] Using cached data due to error');
+        return allDepositsCache.data;
+      }
+
+      return [];
+    } finally {
+      // Clear the promise whether success or failure
+      allDepositsCache.promise = null;
+    }
+  })();
+
+  // Store the promise so concurrent calls wait for it
+  allDepositsCache.promise = fetchPromise;
+
+  return fetchPromise;
+}
+
+/**
+ * Clear the all-deposits cache (call after creating/modifying deposits)
+ */
+export function clearAllDepositsCache() {
+  console.log('[solanaProgram] Clearing all deposits cache');
+  allDepositsCache.data = [];
+  allDepositsCache.timestamp = 0;
+  allDepositsCache.promise = null; // Clear any pending promise
+}
+
 /**
  * Fetch all deposits for a specific user (as depositor)
+ * Uses shared cache to avoid duplicate RPC calls
  */
 export async function getUserDeposits(
   connection: Connection,
   userAddress: string
 ): Promise<SolanaDeposit[]> {
-  console.log('[solanaProgram] Fetching deposits for user:', userAddress);
+  console.log('[solanaProgram] Getting deposits for user (as depositor):', userAddress);
 
-  try {
-    const userPubkey = new PublicKey(userAddress);
+  const allDeposits = await fetchAllDeposits(connection);
 
-    // Get all accounts owned by the program
-    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-      filters: [
-        // Filter by data size (deposit accounts are 154 bytes)
-        { dataSize: DEPOSIT_ACCOUNT_SIZE },
-        // Filter by depositor (first 32 bytes)
-        {
-          memcmp: {
-            offset: 0,
-            bytes: userPubkey.toBase58(),
-          },
-        },
-      ],
-    });
+  // Filter client-side
+  const userDeposits = allDeposits.filter(d => d.depositor === userAddress);
 
-    console.log('[solanaProgram] Found accounts:', accounts.length);
+  // Sort by lastProofTimestamp descending (newest first)
+  userDeposits.sort((a, b) => b.lastProofTimestamp - a.lastProofTimestamp);
 
-    const deposits: SolanaDeposit[] = [];
-
-    for (const account of accounts) {
-      const deposit = parseDepositAccount(
-        Buffer.from(account.account.data),
-        account.pubkey
-      );
-      if (deposit) {
-        deposits.push(deposit);
-      }
-    }
-
-    // Sort by lastProofTimestamp descending (newest first)
-    deposits.sort((a, b) => b.lastProofTimestamp - a.lastProofTimestamp);
-
-    console.log('[solanaProgram] Parsed deposits:', deposits.length);
-    return deposits;
-  } catch (error) {
-    console.error('[solanaProgram] Error fetching user deposits:', error);
-    return [];
-  }
+  console.log('[solanaProgram] Found', userDeposits.length, 'deposits for user');
+  return userDeposits;
 }
 
 /**
  * Fetch deposits where user is the receiver (claimable deposits)
+ * Uses shared cache to avoid duplicate RPC calls
  */
 export async function getClaimableDeposits(
   connection: Connection,
   receiverAddress: string
 ): Promise<SolanaDeposit[]> {
-  console.log('[solanaProgram] Fetching claimable deposits for receiver:', receiverAddress);
+  console.log('[solanaProgram] Getting deposits for user (as receiver):', receiverAddress);
 
-  try {
-    const receiverPubkey = new PublicKey(receiverAddress);
+  const allDeposits = await fetchAllDeposits(connection);
 
-    // Get all accounts owned by the program
-    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-      filters: [
-        { dataSize: DEPOSIT_ACCOUNT_SIZE },
-        // Filter by receiver (bytes 32-64)
-        {
-          memcmp: {
-            offset: 32, // receiver is at offset 32
-            bytes: receiverPubkey.toBase58(),
-          },
-        },
-      ],
-    });
+  // Filter client-side
+  const claimable = allDeposits.filter(d => d.receiver === receiverAddress && !d.isClosed);
 
-    console.log('[solanaProgram] Found claimable accounts:', accounts.length);
+  console.log('[solanaProgram] Found', claimable.length, 'claimable deposits');
+  return claimable;
+}
 
-    const deposits: SolanaDeposit[] = [];
-
-    for (const account of accounts) {
-      const deposit = parseDepositAccount(
-        Buffer.from(account.account.data),
-        account.pubkey
-      );
-      if (deposit && !deposit.isClosed) {
-        deposits.push(deposit);
-      }
-    }
-
-    return deposits;
-  } catch (error) {
-    console.error('[solanaProgram] Error fetching claimable deposits:', error);
-    return [];
-  }
+/**
+ * Clear the claimable deposits cache (call after claiming)
+ * Note: Now uses the shared all-deposits cache
+ */
+export function clearClaimableDepositsCache(receiverAddress?: string) {
+  // Clear the shared cache since deposits may have changed
+  clearAllDepositsCache();
 }
 
 /**
@@ -529,18 +581,18 @@ export async function buildProofOfLifeTransaction(
   console.log('[solanaProgram]   Deposit Address:', depositAddress.toBase58());
   console.log('[solanaProgram]   Deposit Seed:', depositSeed);
 
-  // DLM Token mint address (hardcoded in contract)
-  const DLM_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
+  // DLM Token mint address (hardcoded in contract) - uses Token-2022 program
+  const DLM_MINT = new PublicKey('dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump');
   console.log('[solanaProgram]   DLM Mint:', DLM_MINT.toBase58());
 
-  // Get depositor's DLM token ATA
+  // Get depositor's DLM token ATA using Token-2022 program
   const dlmATA = await getAssociatedTokenAddress(
     DLM_MINT,
     depositor,
     false,
-    TOKEN_PROGRAM_ID
+    TOKEN_2022_PROGRAM_ID
   );
-  console.log('[solanaProgram]   DLM ATA:', dlmATA.toBase58());
+  console.log('[solanaProgram]   DLM ATA (Token-2022):', dlmATA.toBase58());
 
   // Check DLM balance
   try {
@@ -560,16 +612,17 @@ export async function buildProofOfLifeTransaction(
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = depositor;
 
-  // Check if DLM ATA exists, if not create it
+  // Check if DLM ATA exists, if not create it using Token-2022 program
   const dlmATAInfo = await connection.getAccountInfo(dlmATA);
   if (!dlmATAInfo) {
-    console.log('[solanaProgram] Creating DLM token account...');
+    console.log('[solanaProgram] Creating DLM token account (Token-2022)...');
     transaction.add(
       createAssociatedTokenAccountInstruction(
         depositor,
         dlmATA,
         depositor,
-        DLM_MINT
+        DLM_MINT,
+        TOKEN_2022_PROGRAM_ID
       )
     );
   } else {
@@ -584,7 +637,7 @@ export async function buildProofOfLifeTransaction(
       { pubkey: depositAddress, isSigner: false, isWritable: true },
       { pubkey: dlmATA, isSigner: false, isWritable: true },
       { pubkey: DLM_MINT, isSigner: false, isWritable: true }, // Must be writable for burning
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     programId: PROGRAM_ID,

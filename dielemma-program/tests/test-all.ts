@@ -35,7 +35,7 @@ import { createHash } from 'crypto';
 
 // Configuration
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL');
+const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
 const DLM_TOKEN_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';

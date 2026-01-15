@@ -272,6 +272,61 @@ app.get('/api/deposits/:user', validateChain, async (req: ChainRequest, res: Res
   }
 });
 
+// Get claimable deposits (Solana only)
+app.get('/api/claimable/:receiverAddress', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { receiverAddress } = req.params;
+
+    if (!receiverAddress || typeof receiverAddress !== 'string') {
+      return res.status(400).json({ error: 'Receiver address is required' });
+    }
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.getClaimableDeposits({ chain, network, receiverAddress });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching claimable deposits:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch claimable deposits' });
+  }
+});
+
+// Get latest blockhash
+app.get('/api/blockhash', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.getLatestBlockhash({ chain, network });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching latest blockhash:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch latest blockhash' });
+  }
+});
+
+// Get token balances
+app.get('/api/balances/:walletAddress', validateChain, async (req: ChainRequest, res: Response) => {
+  try {
+    const { chain, network } = req.chainContext!;
+    const { walletAddress } = req.params;
+
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      return res.status(400).json({ error: 'Wallet address is required' });
+    }
+
+    const service = ChainServiceFactory.getService(chain, network);
+    const result = await service.getTokenBalances({ chain, network, walletAddress });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching token balances:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch token balances' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log('Dielemma Backend Server Starting...');

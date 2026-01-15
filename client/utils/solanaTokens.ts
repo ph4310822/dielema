@@ -1,5 +1,9 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
+import {
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  getAssociatedTokenAddress
+} from '@solana/spl-token';
 
 export interface TokenBalance {
   mint: string;
@@ -23,10 +27,10 @@ export const COMMON_TOKENS: Record<string, { symbol: string; name: string; decim
     logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
   },
   // DLM Token (Dielemma)
-  '9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm': {
+  'dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump': {
     symbol: 'DLM',
     name: 'Dielemma',
-    decimals: 9,
+    decimals: 6,
   },
   // USDC
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': {
@@ -125,11 +129,20 @@ export async function getTokenAccounts(
     const connection = new Connection(getRpcUrl(network), 'confirmed');
     const pubkey = new PublicKey(walletAddress);
 
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {
-      programId: TOKEN_PROGRAM_ID,
-    });
+    // Fetch from both Token and Token-2022 programs
+    const [legacyTokenAccounts, token2022Accounts] = await Promise.all([
+      connection.getParsedTokenAccountsByOwner(pubkey, {
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      connection.getParsedTokenAccountsByOwner(pubkey, {
+        programId: TOKEN_2022_PROGRAM_ID,
+      }),
+    ]);
 
-    return tokenAccounts.value.map(account => {
+    // Combine both sets of accounts
+    const allAccounts = [...legacyTokenAccounts.value, ...token2022Accounts.value];
+
+    return allAccounts.map(account => {
       const parsed = account.account.data.parsed;
       return {
         mint: parsed.info.mint,
@@ -196,12 +209,20 @@ export async function getAllTokenBalances(
       isNative: true,
     });
 
-    // Get all token accounts
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {
-      programId: TOKEN_PROGRAM_ID,
-    });
+    // Get all token accounts from both Token and Token-2022 programs
+    const [legacyTokenAccounts, token2022Accounts] = await Promise.all([
+      connection.getParsedTokenAccountsByOwner(pubkey, {
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      connection.getParsedTokenAccountsByOwner(pubkey, {
+        programId: TOKEN_2022_PROGRAM_ID,
+      }),
+    ]);
 
-    for (const account of tokenAccounts.value) {
+    // Combine both sets of accounts
+    const allAccounts = [...legacyTokenAccounts.value, ...token2022Accounts.value];
+
+    for (const account of allAccounts) {
       const parsed = account.account.data.parsed;
       const balance = BigInt(parsed.info.tokenAmount.amount);
 
@@ -231,6 +252,7 @@ export async function getAllTokenBalances(
 
 /**
  * Get token balance for a specific token
+ * Tries both Token and Token-2022 programs
  */
 export async function getTokenBalance(
   walletAddress: string,
@@ -242,22 +264,36 @@ export async function getTokenBalance(
     const pubkey = new PublicKey(walletAddress);
     const mintPubkey = new PublicKey(tokenMint);
 
-    const ata = await getAssociatedTokenAddress(mintPubkey, pubkey, false, TOKEN_PROGRAM_ID);
-
-    const accountInfo = await connection.getAccountInfo(ata);
-    if (!accountInfo) {
-      return 0;
+    // Try Token-2022 program first (newer tokens like DLM use this)
+    try {
+      const ata2022 = await getAssociatedTokenAddress(mintPubkey, pubkey, false, TOKEN_2022_PROGRAM_ID);
+      const accountInfo2022 = await connection.getAccountInfo(ata2022);
+      if (accountInfo2022) {
+        const data = accountInfo2022.data;
+        const amount = data.readBigUInt64LE(64);
+        const mintInfo = await connection.getTokenSupply(mintPubkey);
+        const decimals = mintInfo.value.decimals;
+        console.log(`[solanaTokens] Found ${tokenMint} in Token-2022 program, balance:`, Number(amount) / Math.pow(10, decimals));
+        return Number(amount) / Math.pow(10, decimals);
+      }
+    } catch (e) {
+      console.log('[solanaTokens] Token-2022 ATA not found, trying legacy Token program');
     }
 
-    // Parse the token account data
-    const data = accountInfo.data;
-    const amount = data.readBigUInt64LE(64);
+    // Try legacy Token program
+    const ata = await getAssociatedTokenAddress(mintPubkey, pubkey, false, TOKEN_PROGRAM_ID);
+    const accountInfo = await connection.getAccountInfo(ata);
+    if (accountInfo) {
+      const data = accountInfo.data;
+      const amount = data.readBigUInt64LE(64);
+      const mintInfo = await connection.getTokenSupply(mintPubkey);
+      const decimals = mintInfo.value.decimals;
+      console.log(`[solanaTokens] Found ${tokenMint} in legacy Token program, balance:`, Number(amount) / Math.pow(10, decimals));
+      return Number(amount) / Math.pow(10, decimals);
+    }
 
-    // Get decimals from token mint
-    const mintInfo = await connection.getTokenSupply(mintPubkey);
-    const decimals = mintInfo.value.decimals;
-
-    return Number(amount) / Math.pow(10, decimals);
+    console.log(`[solanaTokens] No balance found for ${tokenMint}`);
+    return 0;
   } catch (error) {
     console.error('[solanaTokens] Error fetching token balance:', error);
     return 0;

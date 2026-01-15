@@ -5,3 +5,6 @@ target-dir = "target"
 [env]
 # Pass optimization flags to the LLVM linker
 RUSTFLAGS = "-C link-arg=-s -C link-arg=-z -C link-arg=now"
+
+[net]
+git-fetch-with-cli = true
