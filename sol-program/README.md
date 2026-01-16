@@ -31,6 +31,7 @@ cargo build-bpf && solana program deploy target/deploy/dielemma_program.so --pro
 
 You ALWAYS FORGET THIS SO I'MMA PUT IT HERE IN EVERY FUCKING CONVERSION:
 proofOfLive ONLY USES DLM TOKEN, IT DOES NOT USE ANYTHING ELSE
+THE DLM TOKEN IS TOKEN-2022 AND THAT WON't BE CHANGED
 
 
 solana config get
