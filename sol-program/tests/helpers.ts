@@ -36,7 +36,7 @@ const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
  * Load wallet from Solana CLI config
  */
 export function loadWallet(): Keypair {
-  const walletPath = path.join(os.homedir(), '.config/solana/id.json');
+  const walletPath = path.join(os.homedir(), '.config/solana/id_mainnet.json');
 
   if (!fs.existsSync(walletPath)) {
     throw new Error(`Wallet not found at ${walletPath}. Please run: solana-keygen new`);

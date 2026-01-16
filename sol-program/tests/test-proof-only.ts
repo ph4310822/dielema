@@ -27,7 +27,7 @@ const connection = new Connection(RPC_URL, 'confirmed');
 const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
 
 // Load keypair
-const keypairBytes = JSON.parse(fs.readFileSync(process.env.HOME + '/.config/solana/id.json', 'utf8'));
+const keypairBytes = JSON.parse(fs.readFileSync(process.env.HOME + '/.config/solana/id_mainnet.json', 'utf8'));
 const payer = Keypair.fromSecretKey(new Uint8Array(keypairBytes));
 
 console.log('Testing Proof of Life with Token-2022...');

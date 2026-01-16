@@ -259,7 +259,7 @@ async function runTests() {
   });
 
   // Load wallet
-  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id.json');
+  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id_mainnet.json');
   const walletBytes = JSON.parse(fs.readFileSync(walletKeypairPath, 'utf-8'));
   const wallet = Keypair.fromSecretKey(new Uint8Array(walletBytes));
 

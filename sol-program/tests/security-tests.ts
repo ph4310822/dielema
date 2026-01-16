@@ -35,8 +35,8 @@ import { createHash } from 'crypto';
 
 // Configuration
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('2h8R6iykrjeyaNyPHkVbgkfdyPrNa2a6Zx7zS7Hmg5ZL');
-const DLM_TOKEN_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
+const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
+const DLM_TOKEN_MINT = new PublicKey('dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
 
@@ -309,7 +309,7 @@ async function runSecurityTests() {
   console.log('╚════════════════════════════════════════════════════════════════╝\n');
 
   const connection = new Connection(RPC_URL, 'confirmed');
-  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id.json');
+  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id_mainnet.json');
   const walletBytes = JSON.parse(fs.readFileSync(walletKeypairPath, 'utf-8'));
   const wallet = Keypair.fromSecretKey(new Uint8Array(walletBytes));
 

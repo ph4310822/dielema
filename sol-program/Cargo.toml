@@ -11,6 +11,10 @@ codegen-units = 1   # Better optimization with single codegen unit
 strip = true        # Remove debug symbols
 panic = "abort"     # Reduce binary size by removing panic unwinding code
 
+[profile.release.build-override]
+opt-level = "z"     # Optimize build scripts for size
+codegen-units = 1   # Use single codegen unit for build scripts
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
@@ -19,7 +23,7 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
-default = []
+default = ["skip-no-realloc"]
 skip-no-realloc = []
 
 [dependencies]

@@ -43,7 +43,7 @@ target/
 *.so
 # Deployed keypairs
 **/keypair.json
-**/deploy-keypair.json
+**/*keypair.json
 
 # Test
 .turbo/

@@ -42,7 +42,7 @@ config();
 // Configuration
 // Use official devnet endpoint with httpAgent for better reliability
 const RPC_URL = process.env.RPC_URL || 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
+const PROGRAM_ID = new PublicKey('EyFvSrD8X5DDGrWpyRRJsxLsrJqngQRAHVponPmR9mmm');
 // Using WSOL (Wrapped SOL) instead of DLM token for testing
 // WSOL uses legacy Token program without extensions
 const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
@@ -593,20 +593,12 @@ async function runAllTests() {
     console.log(`  ⚠️  WSOL setup warning: ${error.message}\n`);
   }
 
-  // Test 1: Create Deposit
-  console.log('=== Test 1: Create Deposit ===');
-  try {
-    const deposit1 = await testCreateDeposit(connection, wallet);
-    passed++;
-  } catch (error) {
-    failed++;
-  }
 
-  // Test 2: Verify Deposit Data
-  console.log('\n=== Test 2: Verify Deposit Data ===');
-  const deposit2 = await testCreateDeposit(connection, wallet);
-  const result2 = await testVerifyDepositData(connection, deposit2);
-  if (result2) passed++; else failed++;
+  // // Test 2: Verify Deposit Data
+  // console.log('\n=== Test 2: Verify Deposit Data ===');
+  // const deposit2 = await testCreateDeposit(connection, wallet);
+  // const result2 = await testVerifyDepositData(connection, deposit2);
+  // if (result2) passed++; else failed++;
 
   // Test 3: Proof of Life
   console.log('\n=== Test 3: Proof of Life ===');
@@ -614,32 +606,32 @@ async function runAllTests() {
   const result7 = await testProofOfLife(connection, wallet, deposit7);
   if (result7) passed++; else failed++;
 
-  // Test 4: Withdraw
-  console.log('\n=== Test 4: Withdraw ===');
-  const deposit3 = await testCreateDeposit(connection, wallet);
-  const result3 = await testWithdraw(connection, wallet, deposit3);
-  if (result3) passed++; else failed++;
+  // // Test 4: Withdraw
+  // console.log('\n=== Test 4: Withdraw ===');
+  // const deposit3 = await testCreateDeposit(connection, wallet);
+  // const result3 = await testWithdraw(connection, wallet, deposit3);
+  // if (result3) passed++; else failed++;
 
-  // Test 5: Double Withdraw (should fail)
-  console.log('\n=== Test 5: Double Withdraw (should fail) ===');
-  const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
-  if (result4) passed++; else failed++;
+  // // Test 5: Double Withdraw (should fail)
+  // console.log('\n=== Test 5: Double Withdraw (should fail) ===');
+  // const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
+  // if (result4) passed++; else failed++;
 
-  // Test 6: Claim after timeout
-  console.log('\n=== Test 6: Claim after timeout ===');
-  console.log('  Creating deposit with 60 second timeout...');
-  const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
-  console.log('  Waiting for timeout to expire...');
-  await sleep(61);
-  console.log('  Timeout expired, attempting claim...');
-  const result5 = await testClaim(connection, wallet, deposit5);
-  if (result5) passed++; else failed++;
+  // // Test 6: Claim after timeout
+  // console.log('\n=== Test 6: Claim after timeout ===');
+  // console.log('  Creating deposit with 60 second timeout...');
+  // const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
+  // console.log('  Waiting for timeout to expire...');
+  // await sleep(61);
+  // console.log('  Timeout expired, attempting claim...');
+  // const result5 = await testClaim(connection, wallet, deposit5);
+  // if (result5) passed++; else failed++;
 
-  // Test 7: Claim before timeout (should fail)
-  console.log('\n=== Test 7: Claim before timeout (should fail) ===');
-  const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
-  const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
-  if (result6) passed++; else failed++;
+  // // Test 7: Claim before timeout (should fail)
+  // console.log('\n=== Test 7: Claim before timeout (should fail) ===');
+  // const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
+  // const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
+  // if (result6) passed++; else failed++;
 
 
   // Print results

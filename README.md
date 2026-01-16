@@ -385,7 +385,7 @@ MIT License - see LICENSE file for details
 
 
 ## Solana contract deployed on devnet:
-Program ID: 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
+Program ID: 5DT8TiEhEHasUXLaVUhsGpt3UAVCDUgVqsT3JkYcZJjv
 
 ## Solana contract deployed on mainnet:
 Program ID: 3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC

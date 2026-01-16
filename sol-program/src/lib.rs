@@ -22,13 +22,16 @@ use spl_token::{
     state::Account as TokenAccount,
 };
 use spl_token_2022::{
+    instruction::{burn_checked, transfer_checked},
+};
+use spl_token_2022::{
     extension::StateWithExtensions,
     instruction::initialize_account3,
     state::Account as TokenAccount2022,
 };
 
 // Declare program ID
-solana_program::declare_id!("3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC");
+solana_program::declare_id!("EyFvSrD8X5DDGrWpyRRJsxLsrJqngQRAHVponPmR9mmm");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
@@ -42,7 +45,8 @@ pub const OFFICIAL_DLM_TOKEN_MINT: &str = "6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrY
 pub const DLM_TOKEN_DECIMALS: u8 = 6;
 
 /// Instruction types for the Dielemma program
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+// Removed Debug, Clone, PartialEq derives to reduce stack usage in ABI generation
+#[derive(BorshSerialize, BorshDeserialize)]
 pub enum DielemmaInstruction {
     /// Deposit ANY SPL tokens with a receiver and proof-of-life timeout
     /// Accounts:
@@ -395,23 +399,31 @@ fn process_deposit(
     }
 
     // Verify token account ownership
-    let token_account_data = depositor_token_account.data.borrow();
-    let (owner, _mint) = if is_token2022 {
-        // Token-2022 accounts with extensions
-        let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        (account_with_extensions.base.owner, account_with_extensions.base.mint)
-    } else {
-        // Legacy Token accounts
-        let account_state = TokenAccount::unpack(&token_account_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        (account_state.owner, account_state.mint)
+    let (owner, _mint) = {
+        let token_account_data = depositor_token_account.data.borrow();
+        let result = if is_token2022 {
+            // Token-2022 accounts with extensions - use Box to avoid stack overflow
+            let account_with_extensions = Box::new(
+                StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
+            (account_with_extensions.base.owner, account_with_extensions.base.mint)
+        } else {
+            // Legacy Token accounts - use Box to allocate on heap
+            let account_state = Box::new(
+                TokenAccount::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
+            (account_state.owner, account_state.mint)
+        };
+        drop(token_account_data);
+        result
     };
+
     if owner != *depositor.key {
         msg!("Token account must be owned by depositor");
         return Err(ProgramError::InvalidAccountData);
     }
-    drop(token_account_data); // Explicitly drop the borrow before we need to borrow again
 
     // Get clock for timestamp
     let clock = Clock::get()?;
@@ -535,7 +547,6 @@ fn process_deposit(
             token_mint.clone(),
             deposit_account.clone(),
             rent_account.clone(),
-            token_program.clone(),
         ],
         &[&[
             TOKEN_ACCOUNT_SEED_PREFIX,
@@ -560,7 +571,6 @@ fn process_deposit(
             depositor_token_account.clone(),
             deposit_token_account.clone(),
             depositor.clone(),
-            token_program.clone(),
         ],
     )?;
 
@@ -649,21 +659,30 @@ fn process_proof_of_life(
     let burn_amount: u64 = 10u64.pow(DLM_TOKEN_DECIMALS as u32);
 
     // Verify depositor's DLM token account balance and ownership
-    let token_account_data = depositor_token_account.data.borrow();
-    let (token_balance, token_account_mint, token_account_owner) = if is_token2022 {
-        let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        (
-            account_with_extensions.base.amount,
-            account_with_extensions.base.mint,
-            account_with_extensions.base.owner
-        )
-    } else {
-        let account_state = TokenAccount::unpack(&token_account_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        (account_state.amount, account_state.mint, account_state.owner)
+    let (token_balance, token_account_mint, token_account_owner) = {
+        let token_account_data = depositor_token_account.data.borrow();
+        let result = if is_token2022 {
+            // Use Box to allocate on heap instead of stack
+            let account_with_extensions = Box::new(
+                StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
+            (
+                account_with_extensions.base.amount,
+                account_with_extensions.base.mint,
+                account_with_extensions.base.owner
+            )
+        } else {
+            // Use Box to allocate on heap instead of stack
+            let account_state = Box::new(
+                TokenAccount::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
+            (account_state.amount, account_state.mint, account_state.owner)
+        };
+        drop(token_account_data);
+        result
     };
-    drop(token_account_data);
 
     // Verify token account is owned by depositor
     if token_account_owner != *depositor.key {
@@ -694,14 +713,27 @@ fn process_proof_of_life(
     }
 
     // Burn directly from depositor's token account
-    let burn_ix = burn(
-        token_program.key,
-        depositor_token_account.key,
-        official_token_mint.key,
-        depositor.key,
-        &[],
-        burn_amount,
-    )?;
+    // For Token-2022, use burn_checked; for legacy token, use burn
+    let burn_ix = if is_token2022 {
+        burn_checked(
+            token_program.key,
+            depositor_token_account.key,
+            official_token_mint.key,
+            depositor.key,
+            &[],
+            burn_amount,
+            DLM_TOKEN_DECIMALS,
+        )?
+    } else {
+        burn(
+            token_program.key,
+            depositor_token_account.key,
+            official_token_mint.key,
+            depositor.key,
+            &[],
+            burn_amount,
+        )?
+    };
 
     invoke(
         &burn_ix,
@@ -709,7 +741,6 @@ fn process_proof_of_life(
             depositor_token_account.clone(),
             official_token_mint.clone(),
             depositor.clone(),
-            token_program.clone(),
         ],
     )?;
 
@@ -743,21 +774,27 @@ fn process_withdraw(
     let is_token2022 = token_program.key == &spl_token_2022::id();
     let token_mint = {
         let token_account_data = depositor_token_account.data.borrow();
-        let (owner, mint) = if is_token2022 {
-            // Token-2022 accounts with extensions
-            let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
-                .map_err(|_| ProgramError::InvalidAccountData)?;
+        let result = if is_token2022 {
+            // Token-2022 accounts with extensions - use Box to avoid stack overflow
+            let account_with_extensions = Box::new(
+                StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
             (account_with_extensions.base.owner, account_with_extensions.base.mint)
         } else {
-            let account_state = TokenAccount::unpack(&token_account_data)
-                .map_err(|_| ProgramError::InvalidAccountData)?;
+            // Use Box to allocate on heap instead of stack
+            let account_state = Box::new(
+                TokenAccount::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
             (account_state.owner, account_state.mint)
         };
-        if owner != *depositor.key {
+        drop(token_account_data);
+        if result.0 != *depositor.key {
             msg!("Token account must be owned by depositor");
             return Err(ProgramError::InvalidAccountData);
         }
-        mint
+        result.1
     };
 
     // Derive PDA
@@ -800,7 +837,10 @@ fn process_withdraw(
     // Get current token balance (scoped to ensure borrow is released before we borrow again)
     let token_amount = {
         let token_account_data = deposit_token_account.data.borrow();
-        let token_account_state = TokenAccount::unpack(&token_account_data)?;
+        // Use Box to allocate on heap instead of stack
+        let token_account_state = Box::new(
+            TokenAccount::unpack(&token_account_data)?
+        );
         token_account_state.amount
     }; // token_account_data is dropped here
 
@@ -820,7 +860,6 @@ fn process_withdraw(
             deposit_token_account.clone(),
             depositor_token_account.clone(),
             deposit_account.clone(),
-            token_program.clone(),
         ],
         &[&[
             DEPOSIT_SEED_PREFIX,
@@ -853,21 +892,27 @@ fn process_claim(
     let is_token2022 = token_program.key == &spl_token_2022::id();
     let token_mint = {
         let token_account_data = receiver_token_account.data.borrow();
-        let (owner, mint) = if is_token2022 {
-            // Token-2022 accounts with extensions
-            let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
-                .map_err(|_| ProgramError::InvalidAccountData)?;
+        let result = if is_token2022 {
+            // Token-2022 accounts with extensions - use Box to avoid stack overflow
+            let account_with_extensions = Box::new(
+                StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
             (account_with_extensions.base.owner, account_with_extensions.base.mint)
         } else {
-            let account_state = TokenAccount::unpack(&token_account_data)
-                .map_err(|_| ProgramError::InvalidAccountData)?;
+            // Use Box to allocate on heap instead of stack
+            let account_state = Box::new(
+                TokenAccount::unpack(&token_account_data)
+                    .map_err(|_| ProgramError::InvalidAccountData)?
+            );
             (account_state.owner, account_state.mint)
         };
-        if owner != *receiver.key {
+        drop(token_account_data);
+        if result.0 != *receiver.key {
             msg!("Token account must be owned by receiver");
             return Err(ProgramError::InvalidAccountData);
         }
-        mint
+        result.1
     };
 
     // Deserialize deposit account once (mutable from start to avoid double deserialization)
@@ -942,7 +987,10 @@ fn process_claim(
     // Get current token balance (scoped to ensure borrow is released before we borrow again)
     let token_amount = {
         let token_account_data = deposit_token_account.data.borrow();
-        let token_account_state = TokenAccount::unpack(&token_account_data)?;
+        // Use Box to allocate on heap instead of stack
+        let token_account_state = Box::new(
+            TokenAccount::unpack(&token_account_data)?
+        );
         token_account_state.amount
     }; // token_account_data is dropped here
 
@@ -962,7 +1010,6 @@ fn process_claim(
             deposit_token_account.clone(),
             receiver_token_account.clone(),
             deposit_account.clone(),
-            token_program.clone(),
         ],
         &[&[
             DEPOSIT_SEED_PREFIX,
