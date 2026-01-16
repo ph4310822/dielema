@@ -281,7 +281,8 @@ export default function ProofOfLifeScreen({ navigation, route }: ProofOfLifeScre
           connection,
           depositorPubkey,
           depositPubkey,
-          depositSeed
+          depositSeed,
+          network
         );
         console.log('[ProofOfLife] Transaction built successfully');
 

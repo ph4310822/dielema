@@ -42,7 +42,7 @@ dielemma/
 
 | Chain | Status | Contract Address | Network |
 |-------|--------|------------------|---------|
-| Solana | ✅ Deployed | `3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA` | Devnet |
+| Solana | ✅ Deployed | `3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC` | Devnet |
 | BSC | 🚀 Ready | *Deploy to get address* | Testnet/Mainnet |
 | Ethereum | 🚀 Ready | *Deploy to get address* | Sepolia |
 | Polygon | 🚀 Ready | *Deploy to get address* | Amoy |
@@ -79,7 +79,7 @@ DEFAULT_NETWORK=testnet
 
 # Solana Configuration
 SOLANA_RPC_URL=https://api.devnet.solana.com
-SOLANA_PROGRAM_ID=3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
+SOLANA_PROGRAM_ID=3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC
 
 # BSC Configuration (after deployment)
 BSC_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545
@@ -388,4 +388,4 @@ MIT License - see LICENSE file for details
 Program ID: 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
 
 ## Solana contract deployed on mainnet:
-Program ID: 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
+Program ID: 3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC

@@ -25,18 +25,29 @@ import {
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
+  createSyncNativeInstruction,
 } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createHash } from 'crypto';
+import { config } from 'dotenv';
+
+// Load environment variables from .env file
+config();
 
 // Configuration
-const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
-const DLM_TOKEN_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
+// Use official devnet endpoint with httpAgent for better reliability
+const RPC_URL = process.env.RPC_URL || 'https://api.devnet.solana.com';
+const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
+// Using WSOL (Wrapped SOL) instead of DLM token for testing
+// WSOL uses legacy Token program without extensions
+const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
+// Official DLM token mint (Token-2022)
+const DLM_MINT = new PublicKey('6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
 
@@ -175,18 +186,18 @@ async function testCreateDeposit(
 ): Promise<DepositInfo> {
   try {
     const receiver = options?.receiver || wallet.publicKey;
-    const amount = options?.amount || BigInt(100_000_000); // 0.1 DLM
-    const timeout = options?.timeout || BigInt(86400); // 1 day
+    const amount = options?.amount || BigInt(10_000_000); // 0.01 WSOL
+    const timeout = options?.timeout || BigInt(86400); // 1 min
 
     const depositSeed = generateDepositSeed();
     const [depositPDA] = deriveDepositPDA(wallet.publicKey, depositSeed);
     const [tokenAccountPDA] = deriveTokenAccountPDA(depositPDA);
 
     const depositorATA = await getAssociatedTokenAddress(
-      DLM_TOKEN_MINT,
+      WSOL_MINT,
       wallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_PROGRAM_ID  // WSOL uses legacy Token program
     );
 
     const instructionData = buildDepositInstructionData(depositSeed, receiver, amount, timeout);
@@ -197,8 +208,8 @@ async function testCreateDeposit(
         { pubkey: depositPDA, isSigner: false, isWritable: true },
         { pubkey: depositorATA, isSigner: false, isWritable: true },
         { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
-        { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: WSOL_MINT, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // WSOL uses legacy Token program
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ],
@@ -223,7 +234,7 @@ async function testCreateDeposit(
       seed: depositSeed,
       depositor: wallet.publicKey,
       receiver,
-      tokenMint: DLM_TOKEN_MINT,
+      tokenMint: WSOL_MINT,
       amount,
       timeout,
     };
@@ -271,7 +282,7 @@ async function testWithdraw(connection: Connection, wallet: Keypair, deposit: De
       deposit.tokenMint,
       wallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_PROGRAM_ID  // WSOL uses legacy Token program
     );
 
     const instructionData = buildWithdrawInstructionData(deposit.seed);
@@ -282,7 +293,7 @@ async function testWithdraw(connection: Connection, wallet: Keypair, deposit: De
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: depositorATA, isSigner: false, isWritable: true },
         { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // WSOL uses legacy Token program
       ],
       programId: PROGRAM_ID,
       data: instructionData,
@@ -319,7 +330,7 @@ async function testClaim(connection: Connection, receiverWallet: Keypair, deposi
       deposit.tokenMint,
       receiverWallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_PROGRAM_ID  // WSOL uses legacy Token program
     );
 
     const instructionData = buildClaimInstructionData(deposit.seed);
@@ -330,7 +341,7 @@ async function testClaim(connection: Connection, receiverWallet: Keypair, deposi
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: receiverATA, isSigner: false, isWritable: true },
         { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       programId: PROGRAM_ID,
       data: instructionData,
@@ -362,11 +373,12 @@ async function testClaim(connection: Connection, receiverWallet: Keypair, deposi
 
 async function testProofOfLife(connection: Connection, wallet: Keypair, deposit: DepositInfo): Promise<boolean> {
   try {
+    // Use DLM tokens for proof-of-life (not WSOL)
     const dlmATA = await getAssociatedTokenAddress(
-      DLM_TOKEN_MINT,
+      DLM_MINT,
       wallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_2022_PROGRAM_ID  // DLM uses Token-2022
     );
 
     const instructionData = buildProofOfLifeInstructionData(deposit.seed);
@@ -376,9 +388,8 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
         { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: dlmATA, isSigner: false, isWritable: true },
-        { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: DLM_MINT, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       programId: PROGRAM_ID,
       data: instructionData,
@@ -409,7 +420,7 @@ async function testDoubleWithdrawShouldFail(connection: Connection, wallet: Keyp
       deposit.tokenMint,
       wallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_PROGRAM_ID  // WSOL uses legacy Token program
     );
 
     const instructionData = buildWithdrawInstructionData(deposit.seed);
@@ -420,7 +431,7 @@ async function testDoubleWithdrawShouldFail(connection: Connection, wallet: Keyp
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: depositorATA, isSigner: false, isWritable: true },
         { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // WSOL uses legacy Token program
       ],
       programId: PROGRAM_ID,
       data: instructionData,
@@ -440,9 +451,9 @@ async function testDoubleWithdrawShouldFail(connection: Connection, wallet: Keyp
   } catch (error: any) {
     const errorMsg = error.message || '';
     if (errorMsg.includes('already closed') ||
-        errorMsg.includes('already withdrawn') ||
-        errorMsg.includes('InvalidAccountData') ||
-        errorMsg.includes('Deposit already withdrawn or claimed')) {
+      errorMsg.includes('already withdrawn') ||
+      errorMsg.includes('InvalidAccountData') ||
+      errorMsg.includes('Deposit already withdrawn or claimed')) {
       console.log('  ✅ Double withdraw correctly failed');
       return true;
     }
@@ -458,7 +469,7 @@ async function testClaimBeforeTimeoutShouldFail(connection: Connection, receiver
       deposit.tokenMint,
       receiverWallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_PROGRAM_ID  // WSOL uses legacy Token program
     );
 
     const instructionData = buildClaimInstructionData(deposit.seed);
@@ -469,7 +480,7 @@ async function testClaimBeforeTimeoutShouldFail(connection: Connection, receiver
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: receiverATA, isSigner: false, isWritable: true },
         { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       programId: PROGRAM_ID,
       data: instructionData,
@@ -502,8 +513,13 @@ async function runAllTests() {
   console.log('║           Dielemma Smart Contract - Complete Test Suite          ║');
   console.log('╚════════════════════════════════════════════════════════════════╝\n');
 
-  const connection = new Connection(RPC_URL, 'confirmed');
-  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id.json');
+  // Create connection with longer timeout for devnet reliability
+  const connection = new Connection(RPC_URL, {
+    commitment: 'confirmed',
+    confirmTransactionInitialTimeout: 120000, // 2 minutes
+    wsEndpoint: RPC_URL.replace('https://', 'wss://').replace('http://', 'ws://'),
+  });
+  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id_mainnet.json');
   const walletBytes = JSON.parse(fs.readFileSync(walletKeypairPath, 'utf-8'));
   const wallet = Keypair.fromSecretKey(new Uint8Array(walletBytes));
 
@@ -514,6 +530,68 @@ async function runAllTests() {
   // Check balance
   const balance = await connection.getBalance(wallet.publicKey);
   console.log(`Wallet balance: ${(balance / LAMPORTS_PER_SOL).toFixed(4)} SOL\n`);
+
+  // Setup WSOL account for testing
+  console.log('Setting up WSOL account...');
+  const wsolATA = await getAssociatedTokenAddress(
+    WSOL_MINT,
+    wallet.publicKey,
+    false,
+    TOKEN_PROGRAM_ID
+  );
+
+  try {
+    const wsolAccountInfo = await connection.getAccountInfo(wsolATA);
+    if (!wsolAccountInfo) {
+      console.log('  Creating WSOL Associated Token Account...');
+      const createATAInstruction = createAssociatedTokenAccountInstruction(
+        wallet.publicKey,
+        wsolATA,
+        wallet.publicKey,
+        WSOL_MINT,
+        TOKEN_PROGRAM_ID
+      );
+
+      const createATATx = new Transaction().add(createATAInstruction);
+      const { blockhash } = await connection.getLatestBlockhash();
+      createATATx.recentBlockhash = blockhash;
+      createATATx.feePayer = wallet.publicKey;
+
+      await sendAndConfirmTransaction(connection, createATATx, [wallet], {
+        commitment: 'confirmed',
+      });
+      console.log('  ✅ WSOL ATA created');
+
+      // Wrap some SOL to WSOL
+      console.log('  Wrapping 0.2 SOL to WSOL...');
+      const wrapAmount = 0.2 * LAMPORTS_PER_SOL;
+
+      const wrapTx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: wallet.publicKey,
+          toPubkey: wsolATA,
+          lamports: wrapAmount,
+        }),
+        createSyncNativeInstruction(wsolATA, TOKEN_PROGRAM_ID)
+      );
+
+      const { blockhash: wrapBlockhash } = await connection.getLatestBlockhash();
+      wrapTx.recentBlockhash = wrapBlockhash;
+      wrapTx.feePayer = wallet.publicKey;
+
+      await sendAndConfirmTransaction(connection, wrapTx, [wallet], {
+        commitment: 'confirmed',
+      });
+      console.log('  ✅ Wrapped 1 SOL to WSOL\n');
+
+
+    } else {
+      console.log('  ✅ WSOL ATA already exists');
+    }
+
+  } catch (error: any) {
+    console.log(`  ⚠️  WSOL setup warning: ${error.message}\n`);
+  }
 
   // Test 1: Create Deposit
   console.log('=== Test 1: Create Deposit ===');
@@ -530,19 +608,25 @@ async function runAllTests() {
   const result2 = await testVerifyDepositData(connection, deposit2);
   if (result2) passed++; else failed++;
 
-  // Test 3: Withdraw
-  console.log('\n=== Test 3: Withdraw ===');
+  // Test 3: Proof of Life
+  console.log('\n=== Test 3: Proof of Life ===');
+  const deposit7 = await testCreateDeposit(connection, wallet);
+  const result7 = await testProofOfLife(connection, wallet, deposit7);
+  if (result7) passed++; else failed++;
+
+  // Test 4: Withdraw
+  console.log('\n=== Test 4: Withdraw ===');
   const deposit3 = await testCreateDeposit(connection, wallet);
   const result3 = await testWithdraw(connection, wallet, deposit3);
   if (result3) passed++; else failed++;
 
-  // Test 4: Double Withdraw (should fail)
-  console.log('\n=== Test 4: Double Withdraw (should fail) ===');
+  // Test 5: Double Withdraw (should fail)
+  console.log('\n=== Test 5: Double Withdraw (should fail) ===');
   const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
   if (result4) passed++; else failed++;
 
-  // Test 5: Claim after timeout
-  console.log('\n=== Test 5: Claim after timeout ===');
+  // Test 6: Claim after timeout
+  console.log('\n=== Test 6: Claim after timeout ===');
   console.log('  Creating deposit with 60 second timeout...');
   const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
   console.log('  Waiting for timeout to expire...');
@@ -551,17 +635,12 @@ async function runAllTests() {
   const result5 = await testClaim(connection, wallet, deposit5);
   if (result5) passed++; else failed++;
 
-  // Test 6: Claim before timeout (should fail)
-  console.log('\n=== Test 6: Claim before timeout (should fail) ===');
+  // Test 7: Claim before timeout (should fail)
+  console.log('\n=== Test 7: Claim before timeout (should fail) ===');
   const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
   const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
   if (result6) passed++; else failed++;
 
-  // Test 7: Proof of Life
-  console.log('\n=== Test 7: Proof of Life ===');
-  const deposit7 = await testCreateDeposit(connection, wallet);
-  const result7 = await testProofOfLife(connection, wallet, deposit7);
-  if (result7) passed++; else failed++;
 
   // Print results
   console.log('\n╔════════════════════════════════════════════════════════════════╗');

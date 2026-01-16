@@ -5,7 +5,7 @@
 
 const { Connection, PublicKey } = require('@solana/web3.js');
 
-const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
+const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
 const DEPOSIT_ACCOUNT_SIZE = 158;
 
 async function getClaimableDeposits(receiverAddress) {

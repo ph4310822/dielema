@@ -21,7 +21,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID || '3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
+const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID || '3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
 
 const connection = new Connection(RPC_URL, 'confirmed');
 

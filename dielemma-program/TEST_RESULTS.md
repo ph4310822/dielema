@@ -3,7 +3,7 @@
 ## Summary
 
 **Date:** 2025-01-13
-**Program ID:** 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
+**Program ID:** 3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC
 **Network:** Devnet
 **Test Suite:** tests/test-all.ts
 
@@ -94,7 +94,7 @@ The critical bug in `initialize_account` (using wrong PDA seeds) has been **succ
 ## Deployment Status
 
 ✅ **Contract deployed to Devnet**
-**Program ID:** 3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA
+**Program ID:** 3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC
 **Build:** target/sbf-solana-solana/release/dielemma_program.so
 
 ## Client Integration

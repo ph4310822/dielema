@@ -22,30 +22,36 @@ use spl_token::{
     state::Account as TokenAccount,
 };
 use spl_token_2022::{
-    extension::ExtensionType,
-    state::{Account as TokenAccount2022, Mint as MintState},
+    extension::StateWithExtensions,
+    instruction::initialize_account3,
+    state::Account as TokenAccount2022,
 };
 
 // Declare program ID
-solana_program::declare_id!("3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA");
+solana_program::declare_id!("3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
 
 /// Official DLM token mint address (hardcoded)
-pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
+/// DEVNET: 6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF
+/// MAINNET: dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump
+pub const OFFICIAL_DLM_TOKEN_MINT: &str = "6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF";
+
+/// DLM token decimals (1 DLM = 10^6 smallest units)
+pub const DLM_TOKEN_DECIMALS: u8 = 6;
 
 /// Instruction types for the Dielemma program
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub enum DielemmaInstruction {
-    /// Deposit tokens with a receiver and proof-of-life timeout
+    /// Deposit ANY SPL tokens with a receiver and proof-of-life timeout
     /// Accounts:
     /// 0. [signer] Depositor/Payer
     /// 1. [writable] Deposit account (PDA)
     /// 2. [writable] Token account (owned by depositor)
     /// 3. [writable] Deposit token account (PDA, holds deposited tokens)
-    /// 4. [] Token mint
-    /// 5. [] Token program
+    /// 4. [] Token mint (any SPL token)
+    /// 5. [] Token program (Token or Token-2022)
     /// 6. [] System program
     /// 7. [] Rent sysvar
     Deposit {
@@ -64,9 +70,8 @@ pub enum DielemmaInstruction {
     /// 0. [signer] Depositor
     /// 1. [writable] Deposit account (PDA)
     /// 2. [writable] Depositor's DLM token account
-    /// 3. [writable] Official DLM token mint (supply decreases when burning)
+    /// 3. [writable] Official DLM token mint
     /// 4. [] Token program
-    /// 5. [] System program
     ProofOfLife {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
@@ -376,14 +381,8 @@ fn process_deposit(
     }
 
     // Validate deposit amount
-    const MAX_DEPOSIT_AMOUNT: u64 = 100_000_000_000_000_000; // 100 million DLM (adjust as needed)
     if amount == 0 {
         msg!("Deposit amount must be greater than 0");
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    if amount > MAX_DEPOSIT_AMOUNT {
-        msg!("Deposit amount exceeds maximum allowed");
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -397,9 +396,18 @@ fn process_deposit(
 
     // Verify token account ownership
     let token_account_data = depositor_token_account.data.borrow();
-    let token_account_state = TokenAccount::unpack(&token_account_data)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    if token_account_state.owner != *depositor.key {
+    let (owner, _mint) = if is_token2022 {
+        // Token-2022 accounts with extensions
+        let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        (account_with_extensions.base.owner, account_with_extensions.base.mint)
+    } else {
+        // Legacy Token accounts
+        let account_state = TokenAccount::unpack(&token_account_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        (account_state.owner, account_state.mint)
+    };
+    if owner != *depositor.key {
         msg!("Token account must be owned by depositor");
         return Err(ProgramError::InvalidAccountData);
     }
@@ -470,7 +478,14 @@ fn process_deposit(
     }
 
     // Calculate token account size
-    let token_account_size = TokenAccount::LEN;
+    // Token-2022 accounts need extra space for potential extensions
+    let token_account_size = if is_token2022 {
+        // Use larger size for Token-2022 to accommodate extensions
+        // Base account size + extension overhead
+        TokenAccount::LEN + 32  // Extra space for extensions
+    } else {
+        TokenAccount::LEN
+    };
 
     // Create token account (needs PDA signature since it will be owned by PDA)
     let create_token_account_ix = system_instruction::create_account(
@@ -478,7 +493,7 @@ fn process_deposit(
         deposit_token_account.key,
         rent.minimum_balance(token_account_size),
         token_account_size as u64,
-        &spl_token::id(),
+        token_program.key,  // Use the token program from instruction (Token or Token-2022)
     );
 
     invoke_signed(
@@ -496,12 +511,22 @@ fn process_deposit(
     )?;
 
     // Initialize token account (owned by deposit PDA, so we need invoke_signed)
-    let init_token_account_ix = initialize_account(
-        &spl_token::id(),
-        deposit_token_account.key,
-        token_mint.key,
-        deposit_account.key,
-    )?;
+    // For Token-2022, use initialize_account3 which handles extensions properly
+    let init_token_account_ix = if is_token2022 {
+        initialize_account3(
+            token_program.key,  // Token-2022 program
+            deposit_token_account.key,
+            token_mint.key,
+            deposit_account.key,
+        )?
+    } else {
+        initialize_account(
+            token_program.key,  // Legacy Token program
+            deposit_token_account.key,
+            token_mint.key,
+            deposit_account.key,
+        )?
+    };
 
     invoke_signed(
         &init_token_account_ix,
@@ -521,7 +546,7 @@ fn process_deposit(
 
     // Transfer tokens from depositor to deposit token account
     let transfer_ix = transfer(
-        &spl_token::id(),
+        token_program.key,  // Use the token program from instruction (Token or Token-2022)
         depositor_token_account.key,  // Source: depositor's ATA
         deposit_token_account.key,      // Destination: deposit's token account
         depositor.key,
@@ -580,14 +605,14 @@ fn process_proof_of_life(
     let depositor_token_account = next_account_info(account_info_iter)?;
     let official_token_mint = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
 
-    // Verify system program
-    if system_program.key != &system_program::id() {
-        return Err(ProgramError::IncorrectProgramId);
+    // Verify depositor is signer
+    if !depositor.is_signer {
+        msg!("Depositor must sign the transaction");
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify token program - accept both legacy Token and Token-2022
+    // Detect token program type (needed for balance checking)
     let is_token2022 = token_program.key == &spl_token_2022::id();
     let is_legacy_token = token_program.key == &spl_token::id();
     if !is_token2022 && !is_legacy_token {
@@ -620,35 +645,57 @@ fn process_proof_of_life(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Verify official token mint matches the hardcoded DLM token
-    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+    // Amount to burn: 1 DLM token (using hardcoded decimals)
+    let burn_amount: u64 = 10u64.pow(DLM_TOKEN_DECIMALS as u32);
 
-    if *official_token_mint.key != official_dlm_mint {
-        msg!("Official token mint must be DLM token");
-        msg!("Expected: {}", OFFICIAL_DLM_TOKEN_MINT);
-        msg!("Got: {}", official_token_mint.key);
+    // Verify depositor's DLM token account balance and ownership
+    let token_account_data = depositor_token_account.data.borrow();
+    let (token_balance, token_account_mint, token_account_owner) = if is_token2022 {
+        let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        (
+            account_with_extensions.base.amount,
+            account_with_extensions.base.mint,
+            account_with_extensions.base.owner
+        )
+    } else {
+        let account_state = TokenAccount::unpack(&token_account_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        (account_state.amount, account_state.mint, account_state.owner)
+    };
+    drop(token_account_data);
+
+    // Verify token account is owned by depositor
+    if token_account_owner != *depositor.key {
+        msg!("Token account must be owned by depositor");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Amount to burn: 1 DLM token (6 decimals)
-    let burn_amount: u64 = 1_000_000;
-
-    // Verify sufficient DLM balance before burning
-    let token_account_data = depositor_token_account.data.borrow();
-    let token_account_state = TokenAccount::unpack(&token_account_data)
+    // Verify the token account is for the official DLM mint
+    let expected_mint = Pubkey::try_from(OFFICIAL_DLM_TOKEN_MINT)
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    drop(token_account_data);
+    if token_account_mint != expected_mint {
+        msg!("Token account mint does not match official DLM mint");
+        msg!("Expected: {}, Got: {}", expected_mint, token_account_mint);
+        return Err(ProgramError::InvalidAccountData);
+    }
 
-    if token_account_state.amount < burn_amount {
+    // Verify sufficient balance
+    if token_balance < burn_amount {
         msg!("Insufficient DLM balance for proof-of-life");
-        msg!("Required: {}, Available: {}", burn_amount, token_account_state.amount);
+        msg!("Required: {}, Available: {}", burn_amount, token_balance);
         return Err(ProgramError::InsufficientFunds);
+    }
+
+    // Verify the passed mint account matches the official DLM token mint
+    if official_token_mint.key != &expected_mint {
+        msg!("Invalid token mint account: expected {}", OFFICIAL_DLM_TOKEN_MINT);
+        return Err(ProgramError::InvalidAccountData);
     }
 
     // Burn directly from depositor's token account
     let burn_ix = burn(
-        &spl_token::id(),
+        token_program.key,
         depositor_token_account.key,
         official_token_mint.key,
         depositor.key,
@@ -692,15 +739,25 @@ fn process_withdraw(
     let token_program = next_account_info(account_info_iter)?;
 
     // CRITICAL: Verify token account ownership and save mint for later validation
+    // Determine if we're using Token-2022
+    let is_token2022 = token_program.key == &spl_token_2022::id();
     let token_mint = {
         let token_account_data = depositor_token_account.data.borrow();
-        let token_account_state = TokenAccount::unpack(&token_account_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        if token_account_state.owner != *depositor.key {
+        let (owner, mint) = if is_token2022 {
+            // Token-2022 accounts with extensions
+            let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+                .map_err(|_| ProgramError::InvalidAccountData)?;
+            (account_with_extensions.base.owner, account_with_extensions.base.mint)
+        } else {
+            let account_state = TokenAccount::unpack(&token_account_data)
+                .map_err(|_| ProgramError::InvalidAccountData)?;
+            (account_state.owner, account_state.mint)
+        };
+        if owner != *depositor.key {
             msg!("Token account must be owned by depositor");
             return Err(ProgramError::InvalidAccountData);
         }
-        token_account_state.mint
+        mint
     };
 
     // Derive PDA
@@ -749,7 +806,7 @@ fn process_withdraw(
 
     // Transfer tokens back to depositor (from deposit_token_account to depositor_token_account)
     let transfer_ix = transfer(
-        &spl_token::id(),
+        token_program.key,  // Use the token program from instruction (Token or Token-2022)
         deposit_token_account.key,      // Source: deposit's token account
         depositor_token_account.key,    // Destination: depositor's ATA
         deposit_account.key,
@@ -792,15 +849,25 @@ fn process_claim(
     let token_program = next_account_info(account_info_iter)?;
 
     // CRITICAL: Verify token account ownership and save mint for later validation
+    // Determine if we're using Token-2022
+    let is_token2022 = token_program.key == &spl_token_2022::id();
     let token_mint = {
         let token_account_data = receiver_token_account.data.borrow();
-        let token_account_state = TokenAccount::unpack(&token_account_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        if token_account_state.owner != *receiver.key {
+        let (owner, mint) = if is_token2022 {
+            // Token-2022 accounts with extensions
+            let account_with_extensions = StateWithExtensions::<TokenAccount2022>::unpack(&token_account_data)
+                .map_err(|_| ProgramError::InvalidAccountData)?;
+            (account_with_extensions.base.owner, account_with_extensions.base.mint)
+        } else {
+            let account_state = TokenAccount::unpack(&token_account_data)
+                .map_err(|_| ProgramError::InvalidAccountData)?;
+            (account_state.owner, account_state.mint)
+        };
+        if owner != *receiver.key {
             msg!("Token account must be owned by receiver");
             return Err(ProgramError::InvalidAccountData);
         }
-        token_account_state.mint
+        mint
     };
 
     // Deserialize deposit account once (mutable from start to avoid double deserialization)
@@ -881,7 +948,7 @@ fn process_claim(
 
     // Transfer tokens to receiver (from deposit_token_account to receiver_token_account)
     let transfer_ix = transfer(
-        &spl_token::id(),
+        token_program.key,  // Use the token program from instruction (Token or Token-2022)
         deposit_token_account.key,      // Source: deposit's token account
         receiver_token_account.key,     // Destination: receiver's ATA
         deposit_account.key,

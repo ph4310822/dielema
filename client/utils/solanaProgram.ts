@@ -23,7 +23,7 @@ import {
 import { Network } from '../types';
 
 // Program ID - updated to store deposit_seed in account data
-export const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
+export const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
 
 // Maximum deposit seed length (must match Rust)
 export const MAX_DEPOSIT_SEED_LENGTH = 32;
@@ -574,15 +574,20 @@ export async function buildProofOfLifeTransaction(
   connection: Connection,
   depositor: PublicKey,
   depositAddress: PublicKey,
-  depositSeed: string
+  depositSeed: string,
+  network: Network = 'mainnet'
 ): Promise<Transaction> {
   console.log('[solanaProgram] Building proof of life transaction');
   console.log('[solanaProgram]   Depositor:', depositor.toBase58());
   console.log('[solanaProgram]   Deposit Address:', depositAddress.toBase58());
   console.log('[solanaProgram]   Deposit Seed:', depositSeed);
+  console.log('[solanaProgram]   Network:', network);
 
-  // DLM Token mint address (hardcoded in contract) - uses Token-2022 program
-  const DLM_MINT = new PublicKey('dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump');
+  // DLM Token mint address - different for devnet and mainnet
+  const DLM_MINT_ADDRESS = network === 'devnet'
+    ? '6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF'
+    : 'dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump';
+  const DLM_MINT = new PublicKey(DLM_MINT_ADDRESS);
   console.log('[solanaProgram]   DLM Mint:', DLM_MINT.toBase58());
 
   // Get depositor's DLM token ATA using Token-2022 program

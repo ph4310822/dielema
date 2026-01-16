@@ -270,7 +270,7 @@ export const CHAIN_CONFIGS: Record<ChainType, ChainConfig> = {
       devnet: 'https://api.devnet.solana.com',
       local: 'http://localhost:8899',
     },
-    programId: '3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA',
+    programId: '3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC',
     nativeCurrency: {
       name: 'Solana',
       symbol: 'SOL',
