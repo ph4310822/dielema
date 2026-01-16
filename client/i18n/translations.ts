@@ -20,6 +20,9 @@ export const translations = {
       yourDeposits: 'Your Deposits',
       claimable: 'Claimable',
       disconnect: 'Disconnect',
+      buyDLM: 'Buy $DLM',
+      howItWorks: 'How does $DLM work?',
+      howItWorksTitle: 'How does $DLM work?',
     },
     chainSelector: {
       title: 'Select Chain',
@@ -110,6 +113,8 @@ export const translations = {
       yourDeposits: '您的存款',
       claimable: '可提取',
       disconnect: '断开连接',
+      buyDLM: '购买 $DLM',
+      howItWorks: 'DLM是如何运作的？',
     },
     chainSelector: {
       title: '选择链',
