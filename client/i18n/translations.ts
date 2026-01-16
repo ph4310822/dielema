@@ -23,6 +23,7 @@ export const translations = {
       buyDLM: 'Buy $DLM',
       howItWorks: 'How does $DLM work?',
       howItWorksTitle: 'How does $DLM work?',
+      howItWorksContent: 'Create a deposit and assign a receiver. Check in every day by burning 1 $DLM to prove you are alive. If you fail to check in within the time span, the deposit assets will be claimable by the receiver.',
     },
     chainSelector: {
       title: 'Select Chain',
@@ -115,6 +116,8 @@ export const translations = {
       disconnect: '断开连接',
       buyDLM: '购买 $DLM',
       howItWorks: 'DLM是如何运作的？',
+      howItWorksTitle: 'DLM是如何运作的？',
+      howItWorksContent: '创建存款并指定接收人。每天通过燃烧1枚$DLM打卡来证明您还活着。如果未能在规定时间内打卡，存款资产将被接收人提取。',
     },
     chainSelector: {
       title: '选择链',
