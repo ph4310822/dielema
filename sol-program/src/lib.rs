@@ -23,7 +23,7 @@ use spl_token::{
 };
 
 // Declare program ID
-solana_program::declare_id!("EyFvSrD8X5DDGrWpyRRJsxLsrJqngQRAHVponPmR9mmm");
+solana_program::declare_id!("8pTjW3uFXj2t2g3RsPFVhmgh3brUuU2LzKsHZBfL4QjY");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";

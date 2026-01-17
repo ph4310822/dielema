@@ -31,7 +31,6 @@ solana-program = "=1.17.31"
 borsh = { version = "0.10", default-features = false, features = ["std"] }
 borsh-derive = "0.10"
 spl-token = { version = "3.5", features = ["no-entrypoint"] }
-spl-token-2022 = { version = "0.6", features = ["no-entrypoint"] }
 # Force older blake3 compatible with platform-tools rustc 1.75
 blake3 = { version = ">=1.5.0, <1.6.0", default-features = false, features = ["digest"] }
 
