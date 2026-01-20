@@ -22,9 +22,8 @@ use spl_token::{
     state::Account as TokenAccount,
 };
 use spl_token_2022::{
-    extension::ExtensionType,
-    instruction::{burn as burn_2022},
-    state::{Account as TokenAccount2022, Mint as MintState},
+    instruction::transfer_checked,
+    state::Account as TokenAccount2022,
 };
 
 // Declare program ID
@@ -36,6 +35,9 @@ pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
 /// Official DLM token mint address (hardcoded)
 // pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
 pub const OFFICIAL_DLM_TOKEN_MINT: &str = "6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF"; //devnet
+
+/// Associated Token Program ID for deriving ATAs
+pub const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 
 /// Instruction types for the Dielemma program
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -61,13 +63,14 @@ pub enum DielemmaInstruction {
         timeout_seconds: u64,
     },
 
-    /// Proof of life - resets the timer and burns 1 DLM token
+    /// Proof of life by burning 1 DLM token to reset timeout
     /// Accounts:
     /// 0. [signer] Depositor
     /// 1. [writable] Deposit account (PDA)
-    /// 2. [writable] Depositor's DLM token account
-    /// 3. [writable] Official DLM token mint (supply decreases when burning)
-    /// 4. [] Token program (Token-2022 or legacy Token program)
+    /// 2. [writable] Depositor's DLM token account (ATA)
+    /// 3. [writable] Burn address's DLM token account (ATA)
+    /// 4. [] DLM Token mint
+    /// 5. [] Token-2022 program
     ProofOfLife {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
@@ -579,7 +582,29 @@ fn process_proof_of_life(
     let depositor = next_account_info(account_info_iter)?;
     let deposit_account = next_account_info(account_info_iter)?;
     let depositor_dlm_token_account = next_account_info(account_info_iter)?;
-    let official_token_mint = next_account_info(account_info_iter)?;
+    let burn_dlm_token_account = next_account_info(account_info_iter)?;
+    let dlm_mint_account = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
+
+    // Verify depositor is signer
+    if !depositor.is_signer {
+        msg!("Depositor must sign the transaction");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Verify token program
+    if token_program.key != &spl_token_2022::id() {
+        msg!("Invalid token program, expected Token-2022");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Verify DLM mint account matches expected mint address
+    let expected_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if dlm_mint_account.key != &expected_mint {
+        msg!("Invalid DLM mint account");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Derive PDA
     let (deposit_pda, _bump) = Pubkey::find_program_address(
@@ -606,51 +631,76 @@ fn process_proof_of_life(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Verify official token mint matches the hardcoded DLM token
-    let official_dlm_mint = OFFICIAL_DLM_TOKEN_MINT.parse::<Pubkey>()
+    // Verify depositor's DLM token account ownership
+    let token_account_data = depositor_dlm_token_account.data.borrow();
+    let token_account_state = TokenAccount2022::unpack(&token_account_data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if token_account_state.owner != *depositor.key {
+        msg!("DLM token account must be owned by depositor");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    drop(token_account_data); // Drop borrow before transfer
+
+    // Derive expected addresses for validation
+    let associated_token_program_id = SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID.parse::<Pubkey>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
-    if *official_token_mint.key != official_dlm_mint {
-        msg!("Official token mint must be DLM token");
-        msg!("Expected: {}", OFFICIAL_DLM_TOKEN_MINT);
-        msg!("Got: {}", official_token_mint.key);
+    // Derive depositor's DLM ATA
+    let (depositor_dlm_ata, _ata_bump) = Pubkey::find_program_address(
+        &[
+            depositor.key.as_ref(),
+            associated_token_program_id.as_ref(),
+            dlm_mint_account.key.as_ref(),
+        ],
+        &associated_token_program_id,
+    );
+
+    // Verify depositor's DLM token account matches expected ATA
+    if depositor_dlm_token_account.key != &depositor_dlm_ata {
+        msg!("Invalid depositor DLM token account");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Amount to burn: 1 DLM token (6 decimals)
-    let burn_amount: u64 = 1_000_000;
+    // Derive BURN_ADDRESS's ATA for the DLM token
+    let burn_address = BURN_ADDRESS.parse::<Pubkey>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let (burn_dlm_ata, _burn_ata_bump) = Pubkey::find_program_address(
+        &[
+            burn_address.as_ref(),
+            associated_token_program_id.as_ref(),
+            dlm_mint_account.key.as_ref(),
+        ],
+        &associated_token_program_id,
+    );
 
-    // // Verify sufficient DLM balance before burning
-    // let token_account_data = depositor_dlm_token_account.data.borrow();
-    // let token_account_state = TokenAccount2022::unpack(&token_account_data)
-    //     .map_err(|_| {
-    //         msg!("Failed to unpack Token-2022 account data");
-    //         ProgramError::InvalidAccountData
-    //     })?;
+    // Verify burn DLM token account matches expected ATA
+    if burn_dlm_token_account.key != &burn_dlm_ata {
+        msg!("Invalid burn DLM token account");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
-    // drop(token_account_data);
+    // Amount to transfer: 1 DLM token (6 decimals)
+    let transfer_amount: u64 = 1_000_000;
+    let decimals: u8 = 6; // DLM token has 6 decimals
 
-    // if token_account_state.amount < burn_amount {
-    //     msg!("Insufficient DLM balance for proof-of-life");
-    //     msg!("Required: {}, Available: {}", burn_amount, token_account_state.amount);
-    //     return Err(ProgramError::InsufficientFunds);
-    // }
-
-    // Burn directly from depositor's token account
-    let burn_ix = burn_2022(
+    // Transfer 1 DLM token to burn address using transfer_checked
+    let transfer_ix = transfer_checked(
         &spl_token_2022::id(),
         depositor_dlm_token_account.key,
-        official_token_mint.key,
+        dlm_mint_account.key,
+        burn_dlm_token_account.key,
         depositor.key,
         &[],
-        burn_amount,
+        transfer_amount,
+        decimals,
     )?;
 
     invoke(
-        &burn_ix,
+        &transfer_ix,
         &[
             depositor_dlm_token_account.clone(),
-            official_token_mint.clone(),
+            burn_dlm_token_account.clone(),
+            dlm_mint_account.clone(),
             depositor.clone(),
         ],
     )?;
@@ -662,7 +712,7 @@ fn process_proof_of_life(
     // Serialize back
     deposit_state.serialize(&mut &mut deposit_account.data.borrow_mut()[..])?;
 
-    msg!("Proof of life recorded at {} with {} tokens burned", deposit_state.last_proof_timestamp, burn_amount);
+    msg!("Proof of life recorded at {} with {} tokens transferred to burn address", deposit_state.last_proof_timestamp, transfer_amount);
     Ok(())
 }
 

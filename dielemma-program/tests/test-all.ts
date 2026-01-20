@@ -41,6 +41,7 @@ import { createHash } from 'crypto';
 const RPC_URL = 'https://api.devnet.solana.com';
 const PROGRAM_ID = new PublicKey('3jtN4Ki5WvHQX4QQaatCNtiHQwE6TVPkjNywfrVnMQi9');
 const DLM_TOKEN_MINT = new PublicKey('6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF');
+const BURN_ADDRESS = new PublicKey('1nc1nerator11111111111111111111111111111111');
 const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
@@ -548,6 +549,13 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
       TOKEN_2022_PROGRAM_ID
     );
 
+    const burnATA = await getAssociatedTokenAddress(
+      DLM_TOKEN_MINT,
+      new PublicKey(BURN_ADDRESS),
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
     const instructionData = buildProofOfLifeInstructionData(deposit.seed);
 
     const instruction = new TransactionInstruction({
@@ -555,7 +563,9 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
         { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: dlmATA, isSigner: false, isWritable: true },
-        { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: true },
+        { pubkey: burnATA, isSigner: false, isWritable: true },
+        { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       programId: PROGRAM_ID,
       data: instructionData,
