@@ -39,7 +39,7 @@ import { createHash } from 'crypto';
 
 // Configuration
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('2zHJAjfvJf7hDYaNSN7EgfVYF8YWX4M9ATiKi2zgAbr2');
+const PROGRAM_ID = new PublicKey('ASqzDH5HKVsgza8Ep8dTMf3U86chjVGXo1TrAmUbheXx');
 const DLM_TOKEN_MINT = new PublicKey('EvU5rAr3oSuvaekL3Y1vhGs5iQwwrxUjaZhzupn2RY4F'); // Token-2022 mint
 const BURN_ADDRESS = new PublicKey('1nc1nerator11111111111111111111111111111111');
 const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');

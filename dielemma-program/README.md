@@ -2,7 +2,7 @@
 
 # deploy best practice
 ## Before deploying, generate a program keypair first:
-solana-keygen new -o my-program-keypair.json
+solana-keygen new -o my-program-keypair.json --force
 
 ## And declare that same ID in your code:
 solana_program::declare_id!("<the-actual-id-from-keypair>");

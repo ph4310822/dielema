@@ -27,7 +27,7 @@ use spl_token_2022::{
 };
 
 // Declare program ID
-solana_program::declare_id!("2zHJAjfvJf7hDYaNSN7EgfVYF8YWX4M9ATiKi2zgAbr2");
+solana_program::declare_id!("ASqzDH5HKVsgza8Ep8dTMf3U86chjVGXo1TrAmUbheXx");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
@@ -669,36 +669,38 @@ fn process_proof_of_life(
     msg!("✓ Deposit account is not closed");
 
     // Verify depositor's DLM token account ownership
-    msg!("Attempting to unpack depositor DLM token account...");
-    let token_account_data = depositor_dlm_token_account.data.borrow();
-    msg!("Token account data length: {}", token_account_data.len());
+    // msg!("Attempting to unpack depositor DLM token account...");
+    // let token_account_data = depositor_dlm_token_account.data.borrow();
+    // msg!("Token account data length: {}", token_account_data.len());
 
-    let token_account_state = TokenAccount2022::unpack(&token_account_data)
-        .map_err(|e| {
-            msg!("Failed to unpack TokenAccount2022: {:?}", e);
-            msg!("This might be a legacy Token account instead of Token-2022");
-            ProgramError::InvalidAccountData
-        })?;
-    msg!("✓ Token account unpacked successfully");
+    // let token_account_state = TokenAccount2022::unpack(&token_account_data)
+    //     .map_err(|e| {
+    //         msg!("Failed to unpack TokenAccount2022: {:?}", e);
+    //         msg!("This might be a legacy Token account instead of Token-2022");
+    //         ProgramError::InvalidAccountData
+    //     })?;
+    // msg!("✓ Token account unpacked successfully");
 
-    if token_account_state.owner != *depositor.key {
-        msg!("DLM token account must be owned by depositor");
-        msg!("Expected owner: {}", depositor.key);
-        msg!("Got owner: {}", token_account_state.owner);
-        return Err(ProgramError::InvalidAccountData);
-    }
-    msg!("✓ DLM token account owned by depositor");
-    drop(token_account_data); // Drop borrow before transfer
+    // if token_account_state.owner != *depositor.key {
+    //     msg!("DLM token account must be owned by depositor");
+    //     msg!("Expected owner: {}", depositor.key);
+    //     msg!("Got owner: {}", token_account_state.owner);
+    //     return Err(ProgramError::InvalidAccountData);
+    // }
+    // msg!("✓ DLM token account owned by depositor");
+    // drop(token_account_data); // Drop borrow before transfer
 
     // Derive expected addresses for validation
     let associated_token_program_id = SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID.parse::<Pubkey>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
+    msg!("✓ associated_token_program_id: {}", associated_token_program_id);
+
     // Derive depositor's DLM ATA
     let (depositor_dlm_ata, _ata_bump) = Pubkey::find_program_address(
         &[
             depositor.key.as_ref(),
-            associated_token_program_id.as_ref(),
+            token_program.key.as_ref(),
             dlm_mint_account.key.as_ref(),
         ],
         &associated_token_program_id,
@@ -706,9 +708,13 @@ fn process_proof_of_life(
 
     // Verify depositor's DLM token account matches expected ATA
     if depositor_dlm_token_account.key != &depositor_dlm_ata {
+        msg!("depositor_dlm_token_account.key: {}", depositor_dlm_token_account.key);
+        msg!("depositor_dlm_ata: {}", &depositor_dlm_ata);
         msg!("Invalid depositor DLM token account");
         return Err(ProgramError::InvalidAccountData);
     }
+
+    msg!("✓ depositor dlm token account check passed");
 
     // Derive BURN_ADDRESS's ATA for the DLM token
     let burn_address = BURN_ADDRESS.parse::<Pubkey>()
@@ -716,11 +722,13 @@ fn process_proof_of_life(
     let (burn_dlm_ata, _burn_ata_bump) = Pubkey::find_program_address(
         &[
             burn_address.as_ref(),
-            associated_token_program_id.as_ref(),
+            token_program.key.as_ref(),
             dlm_mint_account.key.as_ref(),
         ],
         &associated_token_program_id,
     );
+
+    msg!("✓ burn_address: {}", burn_address);
 
     // Verify burn DLM token account matches expected ATA
     if burn_dlm_token_account.key != &burn_dlm_ata {
@@ -728,13 +736,15 @@ fn process_proof_of_life(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    msg!("✓ burn_address check passed");
+
     // Amount to transfer: 1 DLM token (6 decimals)
     let transfer_amount: u64 = 1_000_000;
     let decimals: u8 = 6; // DLM token has 6 decimals
 
     // Transfer 1 DLM token to burn address using transfer_checked
     let transfer_ix = transfer_checked(
-        &spl_token_2022::id(),
+        token_program.key,
         depositor_dlm_token_account.key,
         dlm_mint_account.key,
         burn_dlm_token_account.key,
@@ -744,15 +754,20 @@ fn process_proof_of_life(
         decimals,
     )?;
 
+    msg!("✓ building transfer instruction");
+
     invoke(
         &transfer_ix,
         &[
             depositor_dlm_token_account.clone(),
-            burn_dlm_token_account.clone(),
             dlm_mint_account.clone(),
+            burn_dlm_token_account.clone(),
             depositor.clone(),
+            token_program.clone(),
         ],
     )?;
+
+    msg!("✓ invoking transfer instruction");
 
     // Update timestamp
     let clock = Clock::get()?;
