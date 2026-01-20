@@ -30,8 +30,8 @@ solana_program::declare_id!("E7Qo7Hwp6dW9Ebc7LgdpzGJtzxLFNQCb6FmaKf3qnSRv");
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
 
 /// Official DLM token mint address (hardcoded)
-// pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
-pub const OFFICIAL_DLM_TOKEN_MINT: &str = "EvU5rAr3oSuvaekL3Y1vhGs5iQwwrxUjaZhzupn2RY4F"; //devnet Token-2022
+pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
+// pub const OFFICIAL_DLM_TOKEN_MINT: &str = "EvU5rAr3oSuvaekL3Y1vhGs5iQwwrxUjaZhzupn2RY4F"; //devnet Token-2022
 
 /// Associated Token Program ID for deriving ATAs
 pub const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
