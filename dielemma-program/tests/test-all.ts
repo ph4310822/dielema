@@ -719,7 +719,6 @@ async function runAllTests() {
   await ensureDlmTokenAccount(connection, wallet);
   console.log('');
 
-
   // Test 1: Create Deposit
   // console.log('=== Test 1: Create Deposit ===');
   // try {
@@ -729,38 +728,38 @@ async function runAllTests() {
   //   failed++;
   // }
 
-  // // Test 2: Verify Deposit Data
-  // console.log('\n=== Test 2: Verify Deposit Data ===');
-  // const deposit2 = await testCreateDeposit(connection, wallet);
-  // const result2 = await testVerifyDepositData(connection, deposit2);
-  // if (result2) passed++; else failed++;
+  // Test 2: Verify Deposit Data
+  console.log('\n=== Test 2: Verify Deposit Data ===');
+  const deposit2 = await testCreateDeposit(connection, wallet);
+  const result2 = await testVerifyDepositData(connection, deposit2);
+  if (result2) passed++; else failed++;
 
-  // // Test 3: Withdraw
-  // console.log('\n=== Test 3: Withdraw ===');
-  // const deposit3 = await testCreateDeposit(connection, wallet);
-  // const result3 = await testWithdraw(connection, wallet, deposit3);
-  // if (result3) passed++; else failed++;
+  // Test 3: Withdraw
+  console.log('\n=== Test 3: Withdraw ===');
+  const deposit3 = await testCreateDeposit(connection, wallet);
+  const result3 = await testWithdraw(connection, wallet, deposit3);
+  if (result3) passed++; else failed++;
 
-  // // Test 4: Double Withdraw (should fail)
-  // console.log('\n=== Test 4: Double Withdraw (should fail) ===');
-  // const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
-  // if (result4) passed++; else failed++;
+  // Test 4: Double Withdraw (should fail)
+  console.log('\n=== Test 4: Double Withdraw (should fail) ===');
+  const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
+  if (result4) passed++; else failed++;
 
-  // // Test 5: Claim after timeout
-  // console.log('\n=== Test 5: Claim after timeout ===');
-  // console.log('  Creating deposit with 60 second timeout...');
-  // const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
-  // console.log('  Waiting for timeout to expire...');
-  // await sleep(61);
-  // console.log('  Timeout expired, attempting claim...');
-  // const result5 = await testClaim(connection, wallet, deposit5);
-  // if (result5) passed++; else failed++;
+  // Test 5: Claim after timeout
+  console.log('\n=== Test 5: Claim after timeout ===');
+  console.log('  Creating deposit with 60 second timeout...');
+  const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
+  console.log('  Waiting for timeout to expire...');
+  await sleep(61);
+  console.log('  Timeout expired, attempting claim...');
+  const result5 = await testClaim(connection, wallet, deposit5);
+  if (result5) passed++; else failed++;
 
-  // // Test 6: Claim before timeout (should fail)
-  // console.log('\n=== Test 6: Claim before timeout (should fail) ===');
-  // const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
-  // const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
-  // if (result6) passed++; else failed++;
+  // Test 6: Claim before timeout (should fail)
+  console.log('\n=== Test 6: Claim before timeout (should fail) ===');
+  const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
+  const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
+  if (result6) passed++; else failed++;
 
   // Test 7: Proof of Life
   console.log('\n=== Test 7: Proof of Life ===');
