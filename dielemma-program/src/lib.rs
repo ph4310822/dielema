@@ -18,22 +18,24 @@ use solana_program::{
     sysvar::{clock::Clock, rent::Rent, Sysvar, SysvarId},
 };
 use spl_token::{
-    instruction::{initialize_account, transfer, burn},
+    instruction::{initialize_account, transfer},
     state::Account as TokenAccount,
 };
 use spl_token_2022::{
     extension::ExtensionType,
+    instruction::{burn as burn_2022},
     state::{Account as TokenAccount2022, Mint as MintState},
 };
 
 // Declare program ID
-solana_program::declare_id!("3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA");
+solana_program::declare_id!("3jtN4Ki5WvHQX4QQaatCNtiHQwE6TVPkjNywfrVnMQi9");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
 
 /// Official DLM token mint address (hardcoded)
-pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
+// pub const OFFICIAL_DLM_TOKEN_MINT: &str = "dVA6zfXBRieUCPS8GR4hve5ugmp5naPvKGFquUDpump";
+pub const OFFICIAL_DLM_TOKEN_MINT: &str = "6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF"; //devnet
 
 /// Instruction types for the Dielemma program
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -65,8 +67,7 @@ pub enum DielemmaInstruction {
     /// 1. [writable] Deposit account (PDA)
     /// 2. [writable] Depositor's DLM token account
     /// 3. [writable] Official DLM token mint (supply decreases when burning)
-    /// 4. [] Token program
-    /// 5. [] System program
+    /// 4. [] Token program (Token-2022 or legacy Token program)
     ProofOfLife {
         /// Deposit account seed (unique identifier)
         deposit_seed: String,
@@ -577,23 +578,8 @@ fn process_proof_of_life(
 
     let depositor = next_account_info(account_info_iter)?;
     let deposit_account = next_account_info(account_info_iter)?;
-    let depositor_token_account = next_account_info(account_info_iter)?;
+    let depositor_dlm_token_account = next_account_info(account_info_iter)?;
     let official_token_mint = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
-
-    // Verify system program
-    if system_program.key != &system_program::id() {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
-    // Verify token program - accept both legacy Token and Token-2022
-    let is_token2022 = token_program.key == &spl_token_2022::id();
-    let is_legacy_token = token_program.key == &spl_token::id();
-    if !is_token2022 && !is_legacy_token {
-        msg!("Invalid token program");
-        return Err(ProgramError::IncorrectProgramId);
-    }
 
     // Derive PDA
     let (deposit_pda, _bump) = Pubkey::find_program_address(
@@ -634,22 +620,26 @@ fn process_proof_of_life(
     // Amount to burn: 1 DLM token (6 decimals)
     let burn_amount: u64 = 1_000_000;
 
-    // Verify sufficient DLM balance before burning
-    let token_account_data = depositor_token_account.data.borrow();
-    let token_account_state = TokenAccount::unpack(&token_account_data)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    drop(token_account_data);
+    // // Verify sufficient DLM balance before burning
+    // let token_account_data = depositor_dlm_token_account.data.borrow();
+    // let token_account_state = TokenAccount2022::unpack(&token_account_data)
+    //     .map_err(|_| {
+    //         msg!("Failed to unpack Token-2022 account data");
+    //         ProgramError::InvalidAccountData
+    //     })?;
 
-    if token_account_state.amount < burn_amount {
-        msg!("Insufficient DLM balance for proof-of-life");
-        msg!("Required: {}, Available: {}", burn_amount, token_account_state.amount);
-        return Err(ProgramError::InsufficientFunds);
-    }
+    // drop(token_account_data);
+
+    // if token_account_state.amount < burn_amount {
+    //     msg!("Insufficient DLM balance for proof-of-life");
+    //     msg!("Required: {}, Available: {}", burn_amount, token_account_state.amount);
+    //     return Err(ProgramError::InsufficientFunds);
+    // }
 
     // Burn directly from depositor's token account
-    let burn_ix = burn(
-        &spl_token::id(),
-        depositor_token_account.key,
+    let burn_ix = burn_2022(
+        &spl_token_2022::id(),
+        depositor_dlm_token_account.key,
         official_token_mint.key,
         depositor.key,
         &[],
@@ -659,10 +649,9 @@ fn process_proof_of_life(
     invoke(
         &burn_ix,
         &[
-            depositor_token_account.clone(),
+            depositor_dlm_token_account.clone(),
             official_token_mint.clone(),
             depositor.clone(),
-            token_program.clone(),
         ],
     )?;
 

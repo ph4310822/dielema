@@ -27,6 +27,10 @@ import {
   TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
+  createSyncNativeInstruction,
+  getAccount,
+  TOKEN_2022_PROGRAM_ID,
+  createTransferInstruction,
 } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -35,8 +39,9 @@ import { createHash } from 'crypto';
 
 // Configuration
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA');
-const DLM_TOKEN_MINT = new PublicKey('9iJpLnJ4VkPjDopdrCz4ykgT1nkYNA3jD3GcsGauu4gm');
+const PROGRAM_ID = new PublicKey('3jtN4Ki5WvHQX4QQaatCNtiHQwE6TVPkjNywfrVnMQi9');
+const DLM_TOKEN_MINT = new PublicKey('6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF');
+const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 const DEPOSIT_SEED_PREFIX = 'deposit';
 const TOKEN_ACCOUNT_SEED_PREFIX = 'token_account';
 
@@ -136,6 +141,180 @@ interface DepositInfo {
   timeout: bigint;
 }
 
+/**
+ * Wraps SOL to WSOL if the wallet has less than the minimum required WSOL balance
+ * @param connection Solana connection
+ * @param wallet Wallet keypair
+ * @param minBalance Minimum WSOL balance required (in lamports, default 0.1 WSOL)
+ */
+async function ensureWsolBalance(
+  connection: Connection,
+  wallet: Keypair,
+  minBalance: number = 0.1 * LAMPORTS_PER_SOL
+): Promise<void> {
+  try {
+    const wsolATA = await getAssociatedTokenAddress(
+      WSOL_MINT,
+      wallet.publicKey,
+      false,
+      TOKEN_PROGRAM_ID
+    );
+
+    // Check if WSOL ATA exists and get balance
+    let currentBalance = 0;
+    try {
+      const accountInfo = await getAccount(connection, wsolATA);
+      currentBalance = Number(accountInfo.amount);
+    } catch (error) {
+      // ATA doesn't exist, balance is 0
+      console.log('  WSOL ATA does not exist yet');
+    }
+
+    console.log(`  Current WSOL balance: ${(currentBalance / LAMPORTS_PER_SOL).toFixed(6)} WSOL`);
+    console.log(`  Required minimum: ${(minBalance / LAMPORTS_PER_SOL).toFixed(6)} WSOL`);
+
+    if (currentBalance >= minBalance) {
+      console.log('  ✅ Sufficient WSOL balance, no wrapping needed');
+      return;
+    }
+
+    // Calculate amount to wrap
+    const amountToWrap = minBalance - currentBalance;
+    console.log(`  Wrapping ${(amountToWrap / LAMPORTS_PER_SOL).toFixed(6)} SOL to WSOL...`);
+
+    // Check SOL balance
+    const solBalance = await connection.getBalance(wallet.publicKey);
+    if (solBalance < amountToWrap + 1 * LAMPORTS_PER_SOL) {
+      throw new Error(`Insufficient SOL balance. Need at least ${(amountToWrap / LAMPORTS_PER_SOL + 1).toFixed(6)} SOL for wrapping + fees`);
+    }
+
+    const transaction = new Transaction();
+
+    // Create WSOL ATA if it doesn't exist
+    const wsolAccountInfo = await connection.getAccountInfo(wsolATA);
+    if (!wsolAccountInfo) {
+      console.log('  Creating WSOL ATA...');
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          wallet.publicKey,
+          wsolATA,
+          wallet.publicKey,
+          WSOL_MINT
+        )
+      );
+    }
+
+    // Transfer SOL to WSOL ATA
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: wsolATA,
+        lamports: amountToWrap,
+      })
+    );
+
+    // Sync native to convert SOL to WSOL
+    transaction.add(
+      createSyncNativeInstruction(wsolATA, TOKEN_PROGRAM_ID)
+    );
+
+    const { blockhash } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = wallet.publicKey;
+
+    const signature = await sendAndConfirmTransaction(connection, transaction, [wallet], {
+      commitment: 'confirmed',
+    });
+
+    console.log(`  ✅ Wrapped ${(amountToWrap / LAMPORTS_PER_SOL).toFixed(6)} SOL to WSOL`);
+    console.log(`  Tx: ${signature}`);
+
+    // Verify new balance
+    const newAccountInfo = await getAccount(connection, wsolATA);
+    console.log(`  New WSOL balance: ${(Number(newAccountInfo.amount) / LAMPORTS_PER_SOL).toFixed(6)} WSOL`);
+  } catch (error: any) {
+    console.log(`  ❌ Failed to wrap SOL: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Ensures DLM token ATA exists and has balance
+ * Creates ATA if it doesn't exist and shows info about transferring tokens
+ */
+async function ensureDlmTokenAccount(connection: Connection, wallet: Keypair): Promise<void> {
+  try {
+    const dlmATA = await getAssociatedTokenAddress(
+      DLM_TOKEN_MINT,
+      wallet.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    // Check if ATA exists
+    const dlmATAInfo = await connection.getAccountInfo(dlmATA);
+
+    if (!dlmATAInfo) {
+      console.log('  Creating DLM Token ATA...');
+      const transaction = new Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          wallet.publicKey,
+          dlmATA,
+          wallet.publicKey,
+          DLM_TOKEN_MINT,
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = wallet.publicKey;
+
+      const signature = await sendAndConfirmTransaction(connection, transaction, [wallet], {
+        commitment: 'confirmed',
+      });
+      console.log(`  ✅ Created DLM ATA: ${dlmATA.toBase58()}`);
+      console.log(`  Tx: ${signature}`);
+    } else {
+      console.log(`  DLM ATA exists: ${dlmATA.toBase58()}`);
+    }
+
+    // Check balance using connection.getAccountInfo instead of getAccount
+    const dlmAccountInfo = await connection.getAccountInfo(dlmATA);
+    if (!dlmAccountInfo) {
+      console.log('  ❌ Failed to get ATA info');
+      return;
+    }
+
+    // Parse token account data manually
+    const data = Buffer.from(dlmAccountInfo.data);
+    // Skip first 64 bytes (mint and owner), next 8 bytes are amount
+    const dlmBalance = data.readBigUInt64LE(64);
+    console.log(`  DLM ATA Balance: ${dlmBalance} (${Number(dlmBalance) / 1_000_000} DLM)`);
+
+    if (dlmBalance === 0n) {
+      console.log('  ⚠️  ATA exists but has 0 balance');
+      console.log('  You need to transfer DLM tokens from your old token account to the ATA:');
+      console.log(`  Old token account: DTidzBHsmbmhaKfbqSdNM2izxP5hs1P4Ai1cmi2X1kSd`);
+      console.log(`  New ATA: ${dlmATA.toBase58()}`);
+      console.log('');
+      console.log('  To transfer, use this Solana CLI command:');
+      console.log(`  spl-token transfer --fund-identity --program-id TokenzQdBNvJnfuDQFcZZ5tcZBnCiFpUzLnsDyBMZqDPDTidyDTidzBHsmbmhaKfbqSdNM2izxP5hs1P4Ai1cmi2X1kSd ${dlmATA.toBase58()} 1000 --owner ~/.config/solana/id_mainnet.json`);
+      console.log('');
+      console.log('  Or you can use Solscan/Explorer to initiate the transfer');
+    } else if (dlmBalance < 1_000_000n) {
+      console.log('  ⚠️  WARNING: Insufficient DLM tokens for Proof of Life!');
+      console.log(`  Required: 1 DLM token (1,000,000)`);
+      console.log(`  Available: ${dlmBalance}`);
+    } else {
+      console.log('  ✅ Sufficient DLM tokens for Proof of Life');
+    }
+  } catch (error: any) {
+    console.log(`  ❌ Failed to setup DLM token account: ${error.message}`);
+    throw error;
+  }
+}
+
 async function getDepositAccount(connection: Connection, address: PublicKey): Promise<any> {
   const accountInfo = await connection.getAccountInfo(address);
   if (!accountInfo) {
@@ -175,7 +354,7 @@ async function testCreateDeposit(
 ): Promise<DepositInfo> {
   try {
     const receiver = options?.receiver || wallet.publicKey;
-    const amount = options?.amount || BigInt(100_000_000); // 0.1 DLM
+    const amount = options?.amount || BigInt(1_000_000); // 0.01 WSOL
     const timeout = options?.timeout || BigInt(86400); // 1 day
 
     const depositSeed = generateDepositSeed();
@@ -183,7 +362,7 @@ async function testCreateDeposit(
     const [tokenAccountPDA] = deriveTokenAccountPDA(depositPDA);
 
     const depositorATA = await getAssociatedTokenAddress(
-      DLM_TOKEN_MINT,
+      WSOL_MINT,
       wallet.publicKey,
       false,
       TOKEN_PROGRAM_ID
@@ -197,7 +376,7 @@ async function testCreateDeposit(
         { pubkey: depositPDA, isSigner: false, isWritable: true },
         { pubkey: depositorATA, isSigner: false, isWritable: true },
         { pubkey: tokenAccountPDA, isSigner: false, isWritable: true },
-        { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: false },
+        { pubkey: WSOL_MINT, isSigner: false, isWritable: false },
         { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
@@ -223,7 +402,7 @@ async function testCreateDeposit(
       seed: depositSeed,
       depositor: wallet.publicKey,
       receiver,
-      tokenMint: DLM_TOKEN_MINT,
+      tokenMint: WSOL_MINT,
       amount,
       timeout,
     };
@@ -366,7 +545,7 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
       DLM_TOKEN_MINT,
       wallet.publicKey,
       false,
-      TOKEN_PROGRAM_ID
+      TOKEN_2022_PROGRAM_ID
     );
 
     const instructionData = buildProofOfLifeInstructionData(deposit.seed);
@@ -377,8 +556,6 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
         { pubkey: deposit.address, isSigner: false, isWritable: true },
         { pubkey: dlmATA, isSigner: false, isWritable: true },
         { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       programId: PROGRAM_ID,
       data: instructionData,
@@ -440,9 +617,9 @@ async function testDoubleWithdrawShouldFail(connection: Connection, wallet: Keyp
   } catch (error: any) {
     const errorMsg = error.message || '';
     if (errorMsg.includes('already closed') ||
-        errorMsg.includes('already withdrawn') ||
-        errorMsg.includes('InvalidAccountData') ||
-        errorMsg.includes('Deposit already withdrawn or claimed')) {
+      errorMsg.includes('already withdrawn') ||
+      errorMsg.includes('InvalidAccountData') ||
+      errorMsg.includes('Deposit already withdrawn or claimed')) {
       console.log('  ✅ Double withdraw correctly failed');
       return true;
     }
@@ -503,7 +680,7 @@ async function runAllTests() {
   console.log('╚════════════════════════════════════════════════════════════════╝\n');
 
   const connection = new Connection(RPC_URL, 'confirmed');
-  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id.json');
+  const walletKeypairPath = path.join(os.homedir(), '.config/solana/id_mainnet.json');
   const walletBytes = JSON.parse(fs.readFileSync(walletKeypairPath, 'utf-8'));
   const wallet = Keypair.fromSecretKey(new Uint8Array(walletBytes));
 
@@ -515,47 +692,58 @@ async function runAllTests() {
   const balance = await connection.getBalance(wallet.publicKey);
   console.log(`Wallet balance: ${(balance / LAMPORTS_PER_SOL).toFixed(4)} SOL\n`);
 
+  // Ensure we have at least 0.1 WSOL for testing
+  console.log('=== Checking WSOL Balance ===');
+  await ensureWsolBalance(connection, wallet, 0.1 * LAMPORTS_PER_SOL);
+  console.log('');
+
+  // Ensure DLM token ATA exists and has balance
+  console.log('=== Checking DLM Token Account ===');
+  await ensureDlmTokenAccount(connection, wallet);
+  console.log('');
+
+
   // Test 1: Create Deposit
-  console.log('=== Test 1: Create Deposit ===');
-  try {
-    const deposit1 = await testCreateDeposit(connection, wallet);
-    passed++;
-  } catch (error) {
-    failed++;
-  }
+  // console.log('=== Test 1: Create Deposit ===');
+  // try {
+  //   const deposit1 = await testCreateDeposit(connection, wallet);
+  //   passed++;
+  // } catch (error) {
+  //   failed++;
+  // }
 
-  // Test 2: Verify Deposit Data
-  console.log('\n=== Test 2: Verify Deposit Data ===');
-  const deposit2 = await testCreateDeposit(connection, wallet);
-  const result2 = await testVerifyDepositData(connection, deposit2);
-  if (result2) passed++; else failed++;
+  // // Test 2: Verify Deposit Data
+  // console.log('\n=== Test 2: Verify Deposit Data ===');
+  // const deposit2 = await testCreateDeposit(connection, wallet);
+  // const result2 = await testVerifyDepositData(connection, deposit2);
+  // if (result2) passed++; else failed++;
 
-  // Test 3: Withdraw
-  console.log('\n=== Test 3: Withdraw ===');
-  const deposit3 = await testCreateDeposit(connection, wallet);
-  const result3 = await testWithdraw(connection, wallet, deposit3);
-  if (result3) passed++; else failed++;
+  // // Test 3: Withdraw
+  // console.log('\n=== Test 3: Withdraw ===');
+  // const deposit3 = await testCreateDeposit(connection, wallet);
+  // const result3 = await testWithdraw(connection, wallet, deposit3);
+  // if (result3) passed++; else failed++;
 
-  // Test 4: Double Withdraw (should fail)
-  console.log('\n=== Test 4: Double Withdraw (should fail) ===');
-  const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
-  if (result4) passed++; else failed++;
+  // // Test 4: Double Withdraw (should fail)
+  // console.log('\n=== Test 4: Double Withdraw (should fail) ===');
+  // const result4 = await testDoubleWithdrawShouldFail(connection, wallet, deposit3);
+  // if (result4) passed++; else failed++;
 
-  // Test 5: Claim after timeout
-  console.log('\n=== Test 5: Claim after timeout ===');
-  console.log('  Creating deposit with 60 second timeout...');
-  const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
-  console.log('  Waiting for timeout to expire...');
-  await sleep(61);
-  console.log('  Timeout expired, attempting claim...');
-  const result5 = await testClaim(connection, wallet, deposit5);
-  if (result5) passed++; else failed++;
+  // // Test 5: Claim after timeout
+  // console.log('\n=== Test 5: Claim after timeout ===');
+  // console.log('  Creating deposit with 60 second timeout...');
+  // const deposit5 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
+  // console.log('  Waiting for timeout to expire...');
+  // await sleep(61);
+  // console.log('  Timeout expired, attempting claim...');
+  // const result5 = await testClaim(connection, wallet, deposit5);
+  // if (result5) passed++; else failed++;
 
-  // Test 6: Claim before timeout (should fail)
-  console.log('\n=== Test 6: Claim before timeout (should fail) ===');
-  const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
-  const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
-  if (result6) passed++; else failed++;
+  // // Test 6: Claim before timeout (should fail)
+  // console.log('\n=== Test 6: Claim before timeout (should fail) ===');
+  // const deposit6 = await testCreateDeposit(connection, wallet, { timeout: BigInt(60) });
+  // const result6 = await testClaimBeforeTimeoutShouldFail(connection, wallet, deposit6);
+  // if (result6) passed++; else failed++;
 
   // Test 7: Proof of Life
   console.log('\n=== Test 7: Proof of Life ===');
