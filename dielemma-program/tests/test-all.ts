@@ -39,8 +39,8 @@ import { createHash } from 'crypto';
 
 // Configuration
 const RPC_URL = 'https://api.devnet.solana.com';
-const PROGRAM_ID = new PublicKey('3jtN4Ki5WvHQX4QQaatCNtiHQwE6TVPkjNywfrVnMQi9');
-const DLM_TOKEN_MINT = new PublicKey('6WnV2dFQwvdJvMhWrg4d8ngYcgt6vvtKAkGrYovGjpwF');
+const PROGRAM_ID = new PublicKey('2zHJAjfvJf7hDYaNSN7EgfVYF8YWX4M9ATiKi2zgAbr2');
+const DLM_TOKEN_MINT = new PublicKey('EvU5rAr3oSuvaekL3Y1vhGs5iQwwrxUjaZhzupn2RY4F'); // Token-2022 mint
 const BURN_ADDRESS = new PublicKey('1nc1nerator11111111111111111111111111111111');
 const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 const DEPOSIT_SEED_PREFIX = 'deposit';
@@ -408,7 +408,7 @@ async function testCreateDeposit(
       timeout,
     };
   } catch (error: any) {
-    console.log(`  ❌ FAILED: ${error.message}`);
+    console.log(`  ❌ testCreateDeposit FAILED: ${error.message}`);
     throw error;
   }
 }
@@ -552,9 +552,11 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
     const burnATA = await getAssociatedTokenAddress(
       DLM_TOKEN_MINT,
       new PublicKey(BURN_ADDRESS),
-      false,
+      true, // Allow off-curve owner address
       TOKEN_2022_PROGRAM_ID
     );
+
+    console.log(`  Burn ATA: ${burnATA.toBase58()}`);
 
     const instructionData = buildProofOfLifeInstructionData(deposit.seed);
 
@@ -584,7 +586,12 @@ async function testProofOfLife(connection: Connection, wallet: Keypair, deposit:
     console.log(`  Tx: ${signature}`);
     return true;
   } catch (error: any) {
-    console.log(`  ❌ FAILED: ${error.message}`);
+    console.log(`  ❌ testProofOfLife FAILED:`, error);
+
+    // Add this to get program logs:
+    if (error.logs) {
+      console.log("  Program logs:", error.logs);
+    }
     return false;
   }
 }
