@@ -665,28 +665,6 @@ fn process_proof_of_life(
     }
     msg!("✓ Deposit account is not closed");
 
-    // Verify depositor's DLM token account ownership
-    // msg!("Attempting to unpack depositor DLM token account...");
-    // let token_account_data = depositor_dlm_token_account.data.borrow();
-    // msg!("Token account data length: {}", token_account_data.len());
-
-    // let token_account_state = TokenAccount2022::unpack(&token_account_data)
-    //     .map_err(|e| {
-    //         msg!("Failed to unpack TokenAccount2022: {:?}", e);
-    //         msg!("This might be a legacy Token account instead of Token-2022");
-    //         ProgramError::InvalidAccountData
-    //     })?;
-    // msg!("✓ Token account unpacked successfully");
-
-    // if token_account_state.owner != *depositor.key {
-    //     msg!("DLM token account must be owned by depositor");
-    //     msg!("Expected owner: {}", depositor.key);
-    //     msg!("Got owner: {}", token_account_state.owner);
-    //     return Err(ProgramError::InvalidAccountData);
-    // }
-    // msg!("✓ DLM token account owned by depositor");
-    // drop(token_account_data); // Drop borrow before transfer
-
     // Derive expected addresses for validation
     let associated_token_program_id = SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID.parse::<Pubkey>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
