@@ -21,13 +21,10 @@ use spl_token::{
     instruction::{initialize_account, transfer},
     state::Account as TokenAccount,
 };
-use spl_token_2022::{
-    instruction::transfer_checked,
-    state::Account as TokenAccount2022,
-};
+use spl_token_2022::instruction::transfer_checked;
 
 // Declare program ID
-solana_program::declare_id!("ASqzDH5HKVsgza8Ep8dTMf3U86chjVGXo1TrAmUbheXx");
+solana_program::declare_id!("E7Qo7Hwp6dW9Ebc7LgdpzGJtzxLFNQCb6FmaKf3qnSRv");
 
 /// Burn address for official tokens (system program is used as burn target)
 pub const BURN_ADDRESS: &str = "1nc1nerator11111111111111111111111111111111";
@@ -742,7 +739,12 @@ fn process_proof_of_life(
     let transfer_amount: u64 = 1_000_000;
     let decimals: u8 = 6; // DLM token has 6 decimals
 
-    // Transfer 1 DLM token to burn address using transfer_checked
+    // Prepare remaining accounts for Token-2022 extensions (transfer hooks, fees, etc.)
+    let remaining_accounts: Vec<&AccountInfo> = account_info_iter.collect();
+
+    msg!("✓ Total remaining accounts for Token-2022 extensions: {}", remaining_accounts.len());
+
+    // Build the transfer_checked instruction
     let transfer_ix = transfer_checked(
         token_program.key,
         depositor_dlm_token_account.key,
@@ -754,20 +756,28 @@ fn process_proof_of_life(
         decimals,
     )?;
 
-    msg!("✓ building transfer instruction");
+    msg!("✓ Transfer instruction created");
 
+    // Prepare all required accounts for the invoke
+    let mut account_list = vec![
+        depositor_dlm_token_account.clone(),
+        dlm_mint_account.clone(),
+        burn_dlm_token_account.clone(),
+        depositor.clone(),
+    ];
+
+    // Add remaining accounts for Token-2022 extensions
+    for account in remaining_accounts {
+        account_list.push(account.clone());
+    }
+
+    // Invoke the transfer with all accounts
     invoke(
         &transfer_ix,
-        &[
-            depositor_dlm_token_account.clone(),
-            dlm_mint_account.clone(),
-            burn_dlm_token_account.clone(),
-            depositor.clone(),
-            token_program.clone(),
-        ],
+        &account_list,
     )?;
 
-    msg!("✓ invoking transfer instruction");
+    msg!("✓ Transfer completed successfully");
 
     // Update timestamp
     let clock = Clock::get()?;
