@@ -1,6 +1,17 @@
-# build
+
+
+# deploy best practice
+## Before deploying, generate a program keypair first:
+solana-keygen new -o my-program-keypair.json --force
+
+## And declare that same ID in your code:
+solana_program::declare_id!("<the-actual-id-from-keypair>");
+This way you maintain consistency across deployments!
+
+## next deploy 
 cargo build-sbf
-solana program deploy target/deploy/dielemma_program.so
+solana program deploy target/deploy/dielemma_program.so --program-id my-program-keypair.json
+
 
 # test contracts
 npx tsx tests/test-all.ts
@@ -8,22 +19,6 @@ npx tsx tests/test-all.ts
 # refund from a failed deploy
 solana-keygen recover --outfile recovered-buffer-keypair.json --force
 solana program close 
-
-
-Best Practice
-Before deploying, generate a program keypair first:
-
-
-solana-keygen new -o my-program-keypair.json
-Then use that keypair when deploying:
-
-
-solana program deploy target/deploy/my_program.so --program-id my-program-keypair.json
-And declare that same ID in your code:
-
-
-solana_program::declare_id!("<the-actual-id-from-keypair>");
-This way you maintain consistency across deployments!
 
 # build & deploy with my-program-keypair.json to make sure program id matches
 cargo build-bpf && solana program deploy target/deploy/dielemma_program.so --program-id my-program-keypair.json

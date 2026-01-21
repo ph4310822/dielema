@@ -5,17 +5,17 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-dielemma_program = "3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC"
+dielemma_program = "3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA"
 
 [programs.localnet]
-dielemma_program = "3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC"
+dielemma_program = "3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
 cluster = "Devnet"
-wallet = "~/.config/solana/id_mainnet.json"
+wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

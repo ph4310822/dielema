@@ -5,10 +5,7 @@
   "scripts": {
     "test": "npx ts-node tests/manual-test.ts"
   },
-  "keywords": [
-    "solana",
-    "blockchain"
-  ],
+  "keywords": ["solana", "blockchain"],
   "author": "",
   "license": "ISC",
   "devDependencies": {
@@ -17,9 +14,8 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
-    "borsh": "^0.7.0",
-    "dotenv": "^17.2.3"
+    "@solana/spl-token": "^0.4.0",
+    "borsh": "^0.7.0"
   }
 }

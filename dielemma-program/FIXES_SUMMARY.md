@@ -44,7 +44,7 @@
 ### 4. Deployment
 - ✅ Contract compiled successfully
 - ✅ Deployed to Solana Devnet
-- ✅ Program ID: `3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC`
+- ✅ Program ID: `3jMCqxicNqoUaymcH23ctjJxLv4NqLb4KqRxcokSKTnA`
 - ✅ Program size: 152,760 bytes
 - ✅ Verified on devnet
 

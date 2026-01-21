@@ -265,6 +265,15 @@ async function performProofOfLife(wallet: Keypair, depositSeed: string) {
     TOKEN_PROGRAM_ID
   );
 
+  // Derive burn address ATA for DLM token
+  const BURN_ADDRESS = new PublicKey("1nc1nerator11111111111111111111111111111111");
+  const burnDLMATA = await getAssociatedTokenAddress(
+    DLM_TOKEN_MINT,
+    BURN_ADDRESS,
+    false,
+    TOKEN_PROGRAM_ID
+  );
+
   const transaction = new Transaction();
 
   // Check if DLM ATA exists, if not create it
@@ -280,8 +289,21 @@ async function performProofOfLife(wallet: Keypair, depositSeed: string) {
     transaction.add(createATAInstruction);
   }
 
+  // Check if burn ATA exists, if not create it
+  const burnATAInfo = await connection.getAccountInfo(burnDLMATA);
+  if (!burnATAInfo) {
+    console.log('  Creating burn address token account...');
+    const createBurnATAInstruction = createAssociatedTokenAccountInstruction(
+      wallet.publicKey,
+      burnDLMATA,
+      BURN_ADDRESS,
+      DLM_TOKEN_MINT
+    );
+    transaction.add(createBurnATAInstruction);
+  }
+
   // Create proof of life instruction
-  // Account structure: depositor, depositPDA, dlmATA, officialDLMmint, tokenProgram, systemProgram
+  // Account structure: depositor, depositPDA, dlmATA, burnDLMATA, officialDLMmint, tokenProgram
   const instructionData = buildProofOfLifeInstructionData(depositSeed);
 
   const instruction = {
@@ -289,9 +311,10 @@ async function performProofOfLife(wallet: Keypair, depositSeed: string) {
       { pubkey: wallet.publicKey, isSigner: true, isWritable: false },
       { pubkey: depositPDA, isSigner: false, isWritable: true },
       { pubkey: dlmATA, isSigner: false, isWritable: true },
+      { pubkey: burnDLMATA, isSigner: false, isWritable: true },  // Burn address token account
       { pubkey: DLM_TOKEN_MINT, isSigner: false, isWritable: true },  // Mint MUST be writable for burning!
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      // Additional accounts for Token-2022 extensions can be added here if needed
     ],
     programId: PROGRAM_ID,
     data: instructionData,

@@ -25,6 +25,9 @@ import { Network } from '../types';
 // Program ID - updated to store deposit_seed in account data
 export const PROGRAM_ID = new PublicKey('E7Qo7Hwp6dW9Ebc7LgdpzGJtzxLFNQCb6FmaKf3qnSRv');
 
+// Burn address for token burning
+const BURN_ADDRESS = new PublicKey('1nc1nerator11111111111111111111111111111111');
+
 // Maximum deposit seed length (must match Rust)
 export const MAX_DEPOSIT_SEED_LENGTH = 32;
 
@@ -599,6 +602,15 @@ export async function buildProofOfLifeTransaction(
   );
   console.log('[solanaProgram]   DLM ATA (Token-2022):', dlmATA.toBase58());
 
+  // Derive burn ATA for DLM token burning
+  const burnATA = await getAssociatedTokenAddress(
+    DLM_MINT,
+    BURN_ADDRESS,
+    true, // Allow off-curve owner address
+    TOKEN_2022_PROGRAM_ID
+  );
+  console.log('[solanaProgram]   Burn ATA:', burnATA.toBase58());
+
   // Check DLM balance
   try {
     const dlmBalance = await connection.getTokenAccountBalance(dlmATA);
@@ -635,15 +647,15 @@ export async function buildProofOfLifeTransaction(
   }
 
   // Create the proof of life instruction with DLM token burning
-  // Account structure: depositor, depositPDA, dlmATA, dlmMint, tokenProgram, systemProgram
+  // Account structure: depositor, depositPDA, dlmATA, burnATA, dlmMint, tokenProgram
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: depositor, isSigner: true, isWritable: false },
       { pubkey: depositAddress, isSigner: false, isWritable: true },
       { pubkey: dlmATA, isSigner: false, isWritable: true },
-      { pubkey: DLM_MINT, isSigner: false, isWritable: true }, // Must be writable for burning
+      { pubkey: burnATA, isSigner: false, isWritable: true },
+      { pubkey: DLM_MINT, isSigner: false, isWritable: false },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     programId: PROGRAM_ID,
     data: instructionData,
