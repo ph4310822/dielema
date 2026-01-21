@@ -23,7 +23,7 @@ import {
 import { Network } from '../types';
 
 // Program ID - updated to store deposit_seed in account data
-export const PROGRAM_ID = new PublicKey('3uT7JEnRZ4pc4bwYvJ9PHsw579YLfNBr3xQvTiXBkGyC');
+export const PROGRAM_ID = new PublicKey('E7Qo7Hwp6dW9Ebc7LgdpzGJtzxLFNQCb6FmaKf3qnSRv');
 
 // Maximum deposit seed length (must match Rust)
 export const MAX_DEPOSIT_SEED_LENGTH = 32;
