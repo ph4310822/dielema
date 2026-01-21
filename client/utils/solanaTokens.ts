@@ -96,7 +96,8 @@ export function getRpcUrl(network: string): string {
     case 'testnet':
       return 'https://api.testnet.solana.com';
     case 'mainnet':
-      return 'https://api.mainnet-beta.solana.com';
+      return 'https://mainnet.helius-rpc.com/?api-key=2c795199-fdd7-4dd9-9eaf-d900a41016a3';
+      // return 'https://api.mainnet-beta.solana.com';
     default:
       return 'https://api.devnet.solana.com';
   }
