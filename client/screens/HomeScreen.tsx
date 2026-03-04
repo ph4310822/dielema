@@ -614,6 +614,16 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
                       </TouchableOpacity>
                     </View>
                   )}
+
+                  {deposits.map((deposit) => (
+                    <DepositCard
+                      key={deposit.depositIndex}
+                      deposit={deposit}
+                      onProofOfLife={handleProofOfLife}
+                      onWithdraw={handleWithdraw}
+                    />
+                  ))}
+
                   {isSolana(chain) && (
                     <TouchableOpacity
                       style={styles.addButtonSmall}
@@ -626,17 +636,10 @@ export default function HomeScreen({ navigation, chain, network, onChainChange, 
                       }
                     >
                       <Ionicons name="add" size={20} color="#fff" />
-                      <Text style={styles.addButtonSmallText}>New Deposit</Text>
+                      <Text style={styles.addButtonSmallText}>{t.addDeposit.createDeposit}</Text>
                     </TouchableOpacity>
                   )}
-                  {deposits.map((deposit) => (
-                    <DepositCard
-                      key={deposit.depositIndex}
-                      deposit={deposit}
-                      onProofOfLife={handleProofOfLife}
-                      onWithdraw={handleWithdraw}
-                    />
-                  ))}
+
                 </View>
               )
             )}

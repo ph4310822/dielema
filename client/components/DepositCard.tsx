@@ -50,34 +50,47 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
   };
   const amount = formatAmount();
 
-  // State for real-time elapsed time
-  const [currentElapsed, setCurrentElapsed] = useState<number>(deposit.elapsed || 0);
+  // State for real-time remaining time
+  const [remainingTime, setRemainingTime] = useState<number>(0);
 
-  // Update elapsed time every second
+  // Update remaining time every second
   useEffect(() => {
-    if (!deposit.lastProofTimestamp || deposit.isClosed) return;
+    // Don't tick if deposit is closed
+    if (deposit.isClosed) {
+      setRemainingTime(0);
+      return;
+    }
 
-    const calculateElapsed = () => {
+    // Calculate remaining time
+    const calculateRemaining = () => {
+      if (!deposit.lastProofTimestamp) return deposit.timeoutSeconds;
       const now = Math.floor(Date.now() / 1000);
-      return now - deposit.lastProofTimestamp;
+      const elapsed = now - deposit.lastProofTimestamp;
+      const remaining = deposit.timeoutSeconds - elapsed;
+      return Math.max(0, remaining);
     };
 
-    // Set initial elapsed time
-    setCurrentElapsed(calculateElapsed());
+    // Set initial remaining time immediately
+    setRemainingTime(calculateRemaining());
 
     // Update every second
     const interval = setInterval(() => {
-      setCurrentElapsed(calculateElapsed());
+      setRemainingTime(calculateRemaining());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [deposit.lastProofTimestamp, deposit.isClosed]);
+  }, [deposit.lastProofTimestamp, deposit.isClosed, deposit.timeoutSeconds]);
 
-  // Format elapsed time as hh:mm:ss
+  // Format elapsed time as dd hh:mm:ss
   const formatElapsedTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+
+    if (days > 0) {
+      return `${days}d ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -95,7 +108,7 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
     }
   };
 
-  const elapsedFormatted = formatElapsedTime(currentElapsed);
+  const remainingFormatted = formatElapsedTime(remainingTime);
   const timeoutFormatted = formatTimeout(deposit.timeoutSeconds);
 
   const getStatus = () => {
@@ -125,11 +138,11 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
 
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={16} color="#636e72" />
-          <Text style={styles.detailText}>{elapsedFormatted} {t.depositCard.elapsed}</Text>
+          <Text style={styles.detailText}>{remainingFormatted} {t.depositCard.remaining}</Text>
         </View>
 
         <View style={styles.detailRow}>
-          <Ionicons name="calendar-outline" size={16} color="#636e72" />
+          <Ionicons name="calendar-outline" size={16} color="#101111" />
           <Text style={styles.detailText}>{timeoutFormatted} {t.depositCard.timeout}</Text>
         </View>
       </View>
@@ -150,8 +163,8 @@ export default function DepositCard({ deposit, onProofOfLife, onWithdraw }: Depo
             style={[styles.button, styles.withdrawButton]}
             onPress={() => onWithdraw(deposit.depositIndex)}
           >
-            <Ionicons name="arrow-down-circle-outline" size={18} color="#fff" />
-            <Text style={styles.buttonText}>{t.depositCard.withdraw}</Text>
+            <Ionicons name="arrow-down-circle-outline" size={18} color="rgba(255,255,255,0.8)" />
+            <Text style={styles.withdrawButtonText}>{t.depositCard.withdraw}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -205,7 +218,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   actions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 8,
   },
   button: {
@@ -221,10 +234,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#50d56b',
   },
   withdrawButton: {
-    backgroundColor: '#fdcb6e',
+    backgroundColor: 'rgba(253, 203, 110, 0.8)',
   },
   buttonText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  withdrawButtonText: {
+    color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 14,
     fontWeight: '600',
   },

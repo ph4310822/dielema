@@ -181,6 +181,7 @@ export function getTokenMetadata(mint: string, network: string): {
 
 /**
  * Get all token balances for a wallet
+ * Only returns native SOL (no SPL tokens)
  */
 export async function getAllTokenBalances(
   walletAddress: string,
@@ -194,7 +195,7 @@ export async function getAllTokenBalances(
   const balances: TokenBalance[] = [];
 
   try {
-    // Get SOL balance - always include native SOL at the top
+    // Get SOL balance - only return native SOL
     const solBalance = await connection.getBalance(pubkey);
     const solMint = 'So11111111111111111111111111111111111111112';
     const solMetadata = getTokenMetadata(solMint, network);
@@ -210,40 +211,7 @@ export async function getAllTokenBalances(
       isNative: true,
     });
 
-    // Get all token accounts from both Token and Token-2022 programs
-    const [legacyTokenAccounts, token2022Accounts] = await Promise.all([
-      connection.getParsedTokenAccountsByOwner(pubkey, {
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      connection.getParsedTokenAccountsByOwner(pubkey, {
-        programId: TOKEN_2022_PROGRAM_ID,
-      }),
-    ]);
-
-    // Combine both sets of accounts
-    const allAccounts = [...legacyTokenAccounts.value, ...token2022Accounts.value];
-
-    for (const account of allAccounts) {
-      const parsed = account.account.data.parsed;
-      const balance = BigInt(parsed.info.tokenAmount.amount);
-
-      // Only include tokens with non-zero balance
-      if (balance > 0n) {
-        const metadata = getTokenMetadata(parsed.info.mint, network);
-        balances.push({
-          mint: parsed.info.mint,
-          symbol: metadata.symbol,
-          name: metadata.name,
-          decimals: parsed.info.tokenAmount.decimals,
-          balance: Number(balance) / Math.pow(10, parsed.info.tokenAmount.decimals),
-          balanceRaw: balance,
-          uiAmount: parsed.info.tokenAmount.uiAmountString || '0',
-          logoURI: metadata.logoURI,
-        });
-      }
-    }
-
-    console.log('[solanaTokens] Found balances:', balances.length);
+    console.log('[solanaTokens] Found balances (native SOL only):', balances.length);
     return balances;
   } catch (error) {
     console.error('[solanaTokens] Error fetching token balances:', error);
